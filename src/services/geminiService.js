@@ -27,11 +27,22 @@ export function getApiKey() {
     const valid = images.filter(Boolean);
     const n = valid.length;       
     if (n === 0) return null;
-    const prompt = `Du bist ein Experte für das Erkennen von Spielkarten auf OFC Poker Board Fotos.
-  Du erhältst ${n} Bild(er). Jedes zeigt genau ein OFC-Board mit 3 Reihen (Top:3, Middle:5, Bottom:5 Karten).
-  Antworte NUR mit einem JSON-Array mit ${n} Objekten. Kein anderer Text.
-  Format: Wert+Farbe (A/K/Q/J/T/9-2 + s/h/d/c). "10" → "T". Nicht erkennbar → "".
-  [{"top":["Ah","Kd","7s"],"middle":["Ts","9h","8d","7c","6s"],"bottom":["As","Ad","Ac","Kh","Ks"]}]`;
+    const prompt = `You are an expert at reading playing cards from photos of Open Face Chinese (OFC) Poker boards.
+
+    You will receive ${n} image(s). Each image contains exactly one complete OFC board with three rows:
+    - Top row: exactly 3 cards
+    - Middle row: exactly 5 cards  
+    - Bottom row: exactly 5 cards
+    
+    Instructions:
+    - Analyze each card very carefully.
+    - Pay special attention to distinguishing 6 and 9 (the 6 opens upwards, the 9 opens downwards).
+    - Pay close attention to suit colors: ♠ and ♣ are black, ♥ and ♦ are red.
+    - If a card is unclear, partially covered, or you are uncertain, output "" for that card.
+    - Respond ONLY with a JSON array. No explanations, no extra text.
+    
+    Output format example:
+    [{"top":["Ah","Kd","7s"],"middle":["Ts","9h","8d","7c","6s"],"bottom":["As","Ad","Ac","Kh","Ks"]}]`;
   
     const parts = [{ text: prompt }];
     for (const img of valid) {
@@ -48,7 +59,11 @@ export function getApiKey() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             contents: [{ parts }],
-            generationConfig: { responseMimeType: "application/json" },
+            generationConfig: {
+              responseMimeType: "application/json",
+              temperature: 0.1,
+              topP: 0.8
+            },
           }),
         }
       );
