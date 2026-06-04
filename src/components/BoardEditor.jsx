@@ -13,6 +13,7 @@ export default function BoardEditor({
   playerIndex,
   activeCardEdit,
   onSelectSlot,
+  duplicateCards = new Set()
 }) {
   const rowDef = [
     { key: "top", label: "Top", count: 3 },
@@ -137,22 +138,26 @@ export default function BoardEditor({
           }}
         >
           <div style={{ display: "flex", gap: 5 }}>
-            {Array.from({ length: count }).map((_, i) => {
-              const isCurrent =
-                activeCardEdit &&
-                activeCardEdit.playerIndex === playerIndex &&
-                activeCardEdit.rowKey === key &&
-                activeCardEdit.slotIndex === i;
+          {Array.from({ length: count }).map((_, i) => {
+          const cardValue = board[key][i] || "";
+          const isCurrent =
+            activeCardEdit &&
+            activeCardEdit.playerIndex === playerIndex &&
+            activeCardEdit.rowKey === key &&
+            activeCardEdit.slotIndex === i;
 
-              return (
-                <CardSlot
-                  key={i}
-                  value={board[key][i] || ""}
-                  isActive={isCurrent}
-                  onClick={() => onSelectSlot(key, i)}
-                />
-              );
-            })}
+          const isDuplicate = cardValue && duplicateCards.has(cardValue);
+
+          return (
+            <CardSlot
+              key={i}
+              value={cardValue}
+              isActive={isCurrent}
+              isDuplicate={isDuplicate}           // ← NEU
+              onClick={() => onSelectSlot(key, i)}
+            />
+          );
+        })}
           </div>
 
           <span

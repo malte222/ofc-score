@@ -44,6 +44,7 @@ export default function App() {
   const [cameraState, setCameraState] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
   const [activeCardEdit, setActiveCardEdit] = useState(null);
+  const [duplicateCards, setDuplicateCards] = useState(new Set());
 
   const galleryRefs = useRef({});
 
@@ -93,6 +94,7 @@ export default function App() {
     setBoards(activePlayers.map(() => emptyBoard()));
     setCapturedImages({});
     setForcedFouls({});
+    setDuplicateCards(new Set());
     setScanStatus("");
     setResult(null);
     setView("round");
@@ -142,7 +144,7 @@ export default function App() {
       mimeType: "image/jpeg",
     });
   };
-  
+
   const openInAppCamera = (bi) => setCameraState({ boardIndex: bi });
 
   const openGallery = (bi) => {
@@ -186,13 +188,15 @@ export default function App() {
     setForcedFouls(p=>{const n={...p};delete n[bi];return n;});
   };
 
-  const removePhoto = (bi) =>
+  const removePhoto = (bi) => {
     setCapturedImages((p) => {
       const n = { ...p };
       delete n[bi];
       return n;
     });
-
+  
+    setDuplicateCards(new Set());
+  };
   // Auto-advance card input
   const getNextSlot = (rowKey, slotIndex) => {
     if (rowKey === "top") {
@@ -233,6 +237,7 @@ export default function App() {
     } else {
       setActiveCardEdit(null);
     }
+    setDuplicateCards(new Set());
   };
 
   const handleClearCard = () => {
@@ -276,80 +281,104 @@ export default function App() {
     return hasImage || isFoul || (topFilled && middleFilled && bottomFilled);
   });
 
+  // Prüft, ob Karten doppelt vorkommen und gibt die betroffenen Karten zurück
+  const findDuplicateCards = (boards) => {
+    const cardCount = {};
+    const duplicates = new Set();
+
+    boards.forEach((board) => {
+      [...board.top, ...board.middle, ...board.bottom].forEach((card) => {
+        if (card) {
+          cardCount[card] = (cardCount[card] || 0) + 1;
+          if (cardCount[card] > 1) {
+            duplicates.add(card);
+          }
+        }
+      });
+    });
+
+    return duplicates;
+  };
+
   // Main evaluation
   const handleEvaluate = async () => {
     if (!allReady) return;
-
+  
     setIsScanning(true);
     setScanStatus("Auswertung läuft…");
-
+  
     const imageSlots = activePlayers.map((_, bi) =>
       forcedFouls[bi] ? null : capturedImages[bi]
     );
     const nonFouledImages = imageSlots.filter(Boolean);
     const hasImages = nonFouledImages.length > 0;
-
+  
     try {
       let recognized = [];
-
+  
       if (hasImages) {
         setScanStatus("KI analysiert Boards…");
         recognized = (await recognizeAllBoards(nonFouledImages)) || [];
       }
-
+  
       let riIdx = 0;
-
+  
       const newBoards = boards.map((b, bi) => {
         if (forcedFouls[bi]) return b;
-
+  
         if (capturedImages[bi]) {
           const r = recognized[riIdx++];
           if (!r) return b;
-
+  
           return {
-            top: (Array.isArray(r.top) ? r.top : [])
-              .slice(0, 3)
-              .map(normalizeCard)
-              .concat(["", "", ""])
-              .slice(0, 3),
-            middle: (Array.isArray(r.middle) ? r.middle : [])
-              .slice(0, 5)
-              .map(normalizeCard)
-              .concat(["", "", "", "", ""])
-              .slice(0, 5),
-            bottom: (Array.isArray(r.bottom) ? r.bottom : [])
-              .slice(0, 5)
-              .map(normalizeCard)
-              .concat(["", "", "", "", ""])
-              .slice(0, 5),
+            top: (Array.isArray(r.top) ? r.top : []).slice(0, 3).map(normalizeCard).concat(["", "", ""]).slice(0, 3),
+            middle: (Array.isArray(r.middle) ? r.middle : []).slice(0, 5).map(normalizeCard).concat(["", "", "", "", ""]).slice(0, 5),
+            bottom: (Array.isArray(r.bottom) ? r.bottom : []).slice(0, 5).map(normalizeCard).concat(["", "", "", "", ""]).slice(0, 5),
           };
         }
-
         return b;
       });
-
+  
       setBoards(newBoards);
 
+      // === Doppelte Karten erkennen ===
+      const duplicates = findDuplicateCards(newBoards);
+      setDuplicateCards(duplicates);
+
+      if (duplicates.size > 0) {
+        const duplicateList = Array.from(duplicates).join(", ");
+        setScanStatus(`Folgende Karten wurden doppelt erkannt: ${duplicateList}. Bitte korrigiere sie manuell.`);
+        return; // Keine Auswertung erlauben
+      }
+  
+      // Prüfung auf unvollständige Erkennung (wie zuvor)
+      const hasIncompleteRecognition = activePlayers.some((_, bi) => {
+        if (!capturedImages[bi] || forcedFouls[bi]) return false;
+        const board = newBoards[bi];
+        return !(board.top.every(c => c) && board.middle.every(c => c) && board.bottom.every(c => c));
+      });
+  
+      if (hasIncompleteRecognition) {
+        setScanStatus("Eine/mehrere Karte(n) wurden von der KI nicht erkannt. Bitte manuell die Boards vervollständigen.");
+        return;
+      }
+  
+      // Alles okay → normale Auswertung
       const foulsArr = activePlayers.map((_, bi) => !!forcedFouls[bi]);
-
-      // Wichtiger: Wir rufen calcPoints jetzt immer auf
       const res = calcPoints(newBoards, foulsArr);
-
-      console.log("calcPoints Ergebnis:", res); // ← Zum Debuggen
-
+  
       setResult({
         ...res,
         fl: newBoards.map((b, i) => (foulsArr[i] ? false : qualifiesFL(b))),
       });
-      console.log(">>> setResult wurde aufgerufen. result ist jetzt:", result);
-
       setScanStatus("");
+  
     } catch (err) {
-      console.error("Fehler in handleEvaluate:", err); // ← Wichtige Zeile!
+      console.error("Fehler in handleEvaluate:", err);
       setScanStatus("Fehler: " + (err.message || err));
+    } finally {
+      setIsScanning(false);
     }
-
-    setIsScanning(false);
   };
 
   const saveRound = () => {
@@ -731,6 +760,7 @@ export default function App() {
                 isForcedFoul={!!forcedFouls[bi]}
                 playerIndex={bi}
                 activeCardEdit={activeCardEdit}
+                duplicateCards={duplicateCards}
                 onSelectSlot={(rowKey, slotIndex) =>
                   setActiveCardEdit({ playerIndex: bi, rowKey, slotIndex })
                 }

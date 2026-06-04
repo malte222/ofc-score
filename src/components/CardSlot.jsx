@@ -1,7 +1,7 @@
 // src/components/CardSlot.jsx
 import React from "react";
 
-export default function CardSlot({ value, isActive, onClick }) {
+export default function CardSlot({ value, isActive, isDuplicate = false, onClick }) {
   const suitColor = (v) => {
     if (!v) return "#cbd5e1";
     const s = v.slice(-1);
@@ -12,7 +12,9 @@ export default function CardSlot({ value, isActive, onClick }) {
     return "#ffffff";
   };
 
-  const borderStyle = isActive
+  const borderStyle = isDuplicate
+    ? "2.5px solid #e74c3c"                    // ← Roter Rand bei Duplikat
+    : isActive
     ? "2px solid #f39c12"
     : value
     ? "1px solid rgba(0, 0, 0, 0.15)"

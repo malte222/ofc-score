@@ -12,14 +12,21 @@ export function getApiKey() {
   
   export async function recognizeAllBoards(images) {
     const apiKey = getApiKey();
-    if (!apiKey) return null;
+    console.log("=== [DEBUG] recognizeAllBoards gestartet ===");
+    console.log("API Key vorhanden:", !!apiKey);
   
+    if (!apiKey) {
+      console.warn("Kein API-Key gefunden!");
+      return null;
+    }
+  
+
     const valid = images.filter(Boolean);
-    const n = valid.length;
+    const n = valid.length;       
     if (n === 0) return null;
-  
     const prompt = `Du bist ein Experte für das Erkennen von Spielkarten auf OFC Poker Board Fotos.
   Du erhältst ${n} Bild(er). Jedes zeigt genau ein OFC-Board mit 3 Reihen (Top:3, Middle:5, Bottom:5 Karten).
+  Achte in deiner Antwort darauf, dass jede Spielkarte maximal einmal vorkommen darf.
   Antworte NUR mit einem JSON-Array mit ${n} Objekten. Kein anderer Text.
   Format: Wert+Farbe (A/K/Q/J/T/9-2 + s/h/d/c). "10" → "T". Nicht erkennbar → "".
   [{"top":["Ah","Kd","7s"],"middle":["Ts","9h","8d","7c","6s"],"bottom":["As","Ad","Ac","Kh","Ks"]}]`;
@@ -45,19 +52,33 @@ export function getApiKey() {
       );
   
       const data = await resp.json();
+      // === WICHTIGE DEBUG-AUSGABEN ===
+      console.log("=== [DEBUG] Rohe API-Antwort ===");
+      console.log(data);
+
       if (data.error) {
+        console.error("Gemini API Fehler:", data.error);
         alert(`Gemini Fehler: ${data.error.message}`);
         return null;
       }
   
-      let text = data.candidates[0].content.parts[0].text
-        .replace(/```json/gi, "")
-        .replace(/```/gi, "")
-        .trim();
-  
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      console.log("=== [DEBUG] Roher Text von Gemini ===");
+      console.log(text);
+
+      text = text.replace(/```json/gi, "").replace(/```/gi, "").trim();
+
+      console.log("=== [DEBUG] Bereinigter Text ===");
+      console.log(text);
+
       const parsed = JSON.parse(text);
+      console.log("=== [DEBUG] Finales geparstes Ergebnis ===");
+      console.log(parsed);
+
       return Array.isArray(parsed) ? parsed : [parsed];
+
     } catch (err) {
+      console.error("Fehler beim API-Aufruf:", err);
       alert(`Fehler: ${err.message}`);
       return null;
     }
