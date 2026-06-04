@@ -29,7 +29,6 @@ export function getApiKey() {
     if (n === 0) return null;
     const prompt = `Du bist ein Experte für das Erkennen von Spielkarten auf OFC Poker Board Fotos.
   Du erhältst ${n} Bild(er). Jedes zeigt genau ein OFC-Board mit 3 Reihen (Top:3, Middle:5, Bottom:5 Karten).
-  Achte in deiner Antwort darauf, dass jede Spielkarte maximal einmal vorkommen darf.
   Antworte NUR mit einem JSON-Array mit ${n} Objekten. Kein anderer Text.
   Format: Wert+Farbe (A/K/Q/J/T/9-2 + s/h/d/c). "10" → "T". Nicht erkennbar → "".
   [{"top":["Ah","Kd","7s"],"middle":["Ts","9h","8d","7c","6s"],"bottom":["As","Ad","Ac","Kh","Ks"]}]`;
