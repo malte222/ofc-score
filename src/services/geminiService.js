@@ -2,13 +2,16 @@
 // Gemini AI integration for automatic card recognition from photos
 
 export function getApiKey() {
-    let key = localStorage.getItem("gemini_api_key");
-    if (!key) {
-      key = import.meta.env.VITE_GEMINI_API_KEY;
-      if (key) localStorage.setItem("gemini_api_key", key);
-    }
-    return key;
+  let key = localStorage.getItem("gemini_api_key");
+  console.log("Key aus localStorage:", key);
+
+  if (!key) {
+    key = import.meta.env.VITE_GEMINI_API_KEY;
+    console.log("Key aus Environment Variable:", key);
+    if (key) localStorage.setItem("gemini_api_key", key);
   }
+  return key;
+}
   
   export async function recognizeAllBoards(images) {
     const apiKey = getApiKey();
