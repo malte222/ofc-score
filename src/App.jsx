@@ -391,26 +391,22 @@ function saveData(p, s) {
 function InAppCamera({ onCapture, onCancel }) {
   const videoRef = useRef();
   const streamRef = useRef();
-  const containerRef = useRef(); // Für das Blockieren von Browser-Pinch-to-Zoom
+  const containerRef = useRef();
 
   const [ready, setReady] = useState(false);
   const [error, setError] = useState(null);
   const [facingMode, setFacingMode] = useState("environment");
 
-  // Digitaler Zoom (Universal-Support für iOS/Android)
   const [zoom, setZoom] = useState(1);
   const maxZoom = 4;
   const minZoom = 1;
 
-  // Touch Pinch-to-Zoom Refs
   const initialDistRef = useRef(null);
   const initialZoomRef = useRef(1);
 
-  // Taschenlampe
   const [torch, setTorch] = useState(false);
   const [hasTorch, setHasTorch] = useState(false);
 
-  // Verhindert, dass der Browser das Spielfeld/die Webseite zoomt, wenn man im Kamerasucher pincht
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -456,7 +452,6 @@ function InAppCamera({ onCapture, onCancel }) {
         videoRef.current.srcObject = stream;
         videoRef.current.play().catch(() => {});
 
-        // Native Taschenlampen-Fähigkeiten des Sensors abfragen (Nur Android/Chrome)
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack && typeof videoTrack.getCapabilities === "function") {
           const caps = videoTrack.getCapabilities();
@@ -489,7 +484,6 @@ function InAppCamera({ onCapture, onCancel }) {
     };
   }, [facingMode, startStream]);
 
-  // Gesten-Erkennung für Pinch-to-Zoom (Zwei-Finger-Spreizung)
   const handleTouchStart = (e) => {
     if (e.touches.length === 2) {
       const dist = Math.hypot(
@@ -518,12 +512,10 @@ function InAppCamera({ onCapture, onCancel }) {
     initialDistRef.current = null;
   };
 
-  // Zoom-Slider Änderung
   const handleSliderChange = (val) => {
     setZoom(val);
   };
 
-  // Taschenlampe an- / ausschalten (Falls unterstützt)
   const toggleTorch = () => {
     const videoTrack =
       streamRef.current && streamRef.current.getVideoTracks()[0];
@@ -538,32 +530,23 @@ function InAppCamera({ onCapture, onCancel }) {
     }
   };
 
-  // Perfekter quadratischer Ausschnitt-Shoot (1:1) unter Berücksichtigung des digitalen Zooms
   const shoot = () => {
     const video = videoRef.current;
     if (!video) return;
 
     const w = video.videoWidth;
     const h = video.videoHeight;
-
-    // Die Basis ist der kleinste quadratische Ausschnitt des Kamerasensors
     const baseSquareSize = Math.min(w, h);
-
-    // Durch den digitalen Zoom verkleinert sich der Ausschnitt auf dem Sensor
     const croppedSensorSize = baseSquareSize / zoom;
-
-    // Zentrierter Startpunkt auf dem Kamerasensor
     const x = (w - croppedSensorSize) / 2;
     const y = (h - croppedSensorSize) / 2;
 
     const canvas = document.createElement("canvas");
-    // Wir rendern ein hochauflösendes 1080x1080 Quadrat
     const outputSize = 1080;
     canvas.width = outputSize;
     canvas.height = outputSize;
     const ctx = canvas.getContext("2d");
 
-    // Schneidet den exakt herangezoomten quadratischen Bereich aus und skaliert ihn hoch
     ctx.drawImage(
       video,
       x,
@@ -599,7 +582,7 @@ function InAppCamera({ onCapture, onCancel }) {
         zIndex: 300,
         display: "flex",
         flexDirection: "column",
-        touchAction: "none", // Verhindert standardmäßiges Browser-Scrolling/Zooming
+        touchAction: "none",
       }}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -638,7 +621,6 @@ function InAppCamera({ onCapture, onCancel }) {
         </div>
       ) : (
         <>
-          {/* Quadratischer Sucherbereich (1:1 Aspect Ratio) */}
           <div
             style={{
               width: "100%",
@@ -663,14 +645,12 @@ function InAppCamera({ onCapture, onCancel }) {
                 height: "100%",
                 objectFit: "cover",
                 display: "block",
-                // Wendet den digitalen Zoom visuell absolut flüssig an
                 transform: "scale(" + zoom + ")",
                 transformOrigin: "center center",
                 transition: "transform 0.05s ease-out",
               }}
             />
 
-            {/* 1:1 Corner Guides */}
             {["tl", "tr", "bl", "br"].map((c) => (
               <div
                 key={c}
@@ -691,7 +671,6 @@ function InAppCamera({ onCapture, onCancel }) {
             ))}
           </div>
 
-          {/* Zoom & Licht Controls direkt unter dem quadratischen Vorschaubild */}
           <div
             style={{
               width: "100%",
@@ -705,7 +684,6 @@ function InAppCamera({ onCapture, onCancel }) {
               background: "transparent",
             }}
           >
-            {/* Zoom Slider (Dank digitalem Zoom IMMER sichtbar und nutzbar!) */}
             <div
               style={{
                 width: "100%",
@@ -748,7 +726,6 @@ function InAppCamera({ onCapture, onCancel }) {
               </span>
             </div>
 
-            {/* Taschenlampen Switch und Kamera flip */}
             <div
               style={{
                 width: "100%",
@@ -789,7 +766,6 @@ function InAppCamera({ onCapture, onCancel }) {
             </div>
           </div>
 
-          {/* Kamera-Auslöser & Abbrechen am ganz unteren Bildschirmrand */}
           <div
             style={{
               background: "#000",
@@ -991,7 +967,6 @@ function ImageBlackoutEditor({
         padding: "12px 0 0 0",
       }}
     >
-      {/* Content card with title + instructions + canvas (preview window) */}
       <div
         style={{
           background: "var(--color-background-primary)",
@@ -1000,7 +975,7 @@ function ImageBlackoutEditor({
           width: "100%",
           maxWidth: Math.min(imgSize.w + 24, window.innerWidth - 8),
           boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          marginBottom: "120px", // reserve space so content isn't hidden behind fixed bottom bar
+          marginBottom: "120px",
         }}
       >
         <div
@@ -1048,7 +1023,6 @@ function ImageBlackoutEditor({
         />
       </div>
 
-      {/* Fixed bottom action bar — Fertig button exactly in the same ergonomic position as the previous camera shutter button for quick & efficient confirmation */}
       <div
         style={{
           position: "fixed",
@@ -1078,7 +1052,6 @@ function ImageBlackoutEditor({
           Abbrechen
         </button>
 
-        {/* Prominent "Fertig" button — large round green, same size & bottom-center position as the camera shutter (thumb-friendly) */}
         <button
           onClick={confirm}
           style={{
@@ -1135,76 +1108,73 @@ function ImageBlackoutEditor({
   );
 }
 
-// ─── CardSlot ────────────────────────────────────────────────────────────────
-function CardSlot({ value, onChange }) {
-  const [editing, setEditing] = useState(false);
-  const [input, setInput] = useState("");
+// ─── CardSlot (Poker Card-Layout: Wert oben-links, Farbe unten-rechts) ─────────────
+function CardSlot({ value, onClick }) {
   const suitColor = (v) => {
     if (!v) return "var(--color-text-tertiary)";
     const s = v.slice(-1);
     return s === "♥" || s === "♦" ? "#c0392b" : "var(--color-text-primary)";
   };
-  const commit = () => {
-    if (!input.trim()) {
-      setEditing(false);
-      return;
-    }
-    const v = normalizeCard(input.trim());
-    if (v) onChange(v);
-    setInput("");
-    setEditing(false);
-  };
-  if (editing)
-    return (
-      <input
-        autoFocus
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => e.key === "Enter" && commit()}
-        placeholder="As"
-        style={{
-          width: 44,
-          height: 62,
-          textAlign: "center",
-          fontSize: 14,
-          borderRadius: 6,
-          border: "2px solid var(--color-border-info)",
-          background: "var(--color-background-primary)",
-        }}
-      />
-    );
+
   return (
     <div
-      onClick={() => setEditing(true)}
-      title="Klicken zum Bearbeiten"
+      onClick={onClick}
+      title="Klicken zum Auswählen"
       style={{
+        position: "relative",
         width: 44,
         height: 62,
         borderRadius: 6,
         border: value
-          ? "0.5px solid var(--color-border-secondary)"
+          ? "1px solid var(--color-border-secondary)"
           : "1.5px dashed var(--color-border-tertiary)",
         background: value
           ? "var(--color-background-primary)"
           : "var(--color-background-secondary)",
         display: "flex",
         flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
+        justifyContent: "space-between",
+        padding: "4px 6px",
+        boxSizing: "border-box",
         cursor: "pointer",
         color: suitColor(value),
+        transition: "all 0.1s ease",
       }}
     >
       {value ? (
         <>
-          <span style={{ fontWeight: 500, fontSize: 13, lineHeight: 1 }}>
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize: 13,
+              alignSelf: "flex-start",
+              lineHeight: 1,
+            }}
+          >
             {value.slice(0, -1)}
           </span>
-          <span style={{ fontSize: 18, lineHeight: 1 }}>{value.slice(-1)}</span>
+          <span
+            style={{
+              fontSize: 16,
+              alignSelf: "flex-end",
+              lineHeight: 1,
+            }}
+          >
+            {value.slice(-1)}
+          </span>
         </>
       ) : (
-        <span style={{ color: "var(--color-text-tertiary)", fontSize: 18 }}>
+        <span
+          style={{
+            color: "var(--color-text-tertiary)",
+            fontSize: 18,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            height: "100%",
+            width: "100%",
+          }}
+        >
           +
         </span>
       )}
@@ -1221,12 +1191,8 @@ function BoardEditor({
   royalty,
   fl,
   isForcedFoul,
+  onSelectSlot,
 }) {
-  const updateRow = (row, idx, val) =>
-    onChange({
-      ...board,
-      [row]: board[row].map((c, i) => (i === idx ? val : c)),
-    });
   const rowDef = [
     { key: "top", label: "Top", count: 3 },
     { key: "middle", label: "Middle", count: 5 },
@@ -1370,7 +1336,7 @@ function BoardEditor({
               <CardSlot
                 key={i}
                 value={board[key][i] || ""}
-                onChange={(v) => updateRow(key, i, v)}
+                onClick={() => onSelectSlot(key, i)}
               />
             ))}
           </div>
@@ -1445,6 +1411,188 @@ function ContextMenu({ x, y, onCamera, onGallery, onClose }) {
   );
 }
 
+// ─── Custom Card Selector Modal (Blickdichtes 52-Karten Matrix-Overlay) ─────────
+function CardSelectorModal({
+  activeSlot,
+  boards,
+  players,
+  activePlayers,
+  onSelectCard,
+  onClearCard,
+  onClose,
+}) {
+  if (!activeSlot) return null;
+  const { playerIndex, rowKey, slotIndex } = activeSlot;
+  const player = players[activePlayers[playerIndex]];
+  const playerName = player ? player.name : "Spieler " + (playerIndex + 1);
+
+  // Vergebene Karten ermitteln
+  const usedCards = new Set();
+  boards.forEach((b) => {
+    if (!b) return;
+    ["top", "middle", "bottom"].forEach((rk) => {
+      if (b[rk]) {
+        b[rk].forEach((c) => {
+          if (c) usedCards.add(c);
+        });
+      }
+    });
+  });
+
+  const suits = [
+    { key: "s", symbol: "♠", color: "#2c3e50" },
+    { key: "h", symbol: "♥", color: "#c0392b" },
+    { key: "d", symbol: "♦", color: "#c0392b" },
+    { key: "c", symbol: "♣", color: "#2c3e50" },
+  ];
+  const ranks = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"];
+
+  const rowLabel = rowKey.charAt(0).toUpperCase() + rowKey.slice(1);
+  const maxSlots = rowKey === "top" ? 3 : 5;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.98)", // 100% blickdichter Dark Slate Hintergrund
+        zIndex: 400,
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "flex-end",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: "#1e293b",
+          borderTopLeftRadius: 16,
+          borderTopRightRadius: 16,
+          width: "100%",
+          maxWidth: 680,
+          margin: "0 auto",
+          padding: "16px 16px 36px 16px",
+          boxSizing: "border-box",
+          display: "flex",
+          flexDirection: "column",
+          gap: 16,
+          boxShadow: "0 -8px 32px rgba(0,0,0,0.5)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: "#fff" }}>
+              {playerName}
+            </div>
+            <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>
+              {rowLabel} - Karte {slotIndex + 1} von {maxSlots}
+            </div>
+          </div>
+
+          {/* Aktionen */}
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <button
+              onClick={onClearCard}
+              title="Karte entfernen"
+              style={{
+                background: "#e74c3c",
+                border: "none",
+                borderRadius: "50%",
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                cursor: "pointer",
+                color: "#fff",
+                fontSize: 16,
+                fontWeight: "bold",
+                boxShadow: "0 2px 8px rgba(231, 76, 60, 0.3)",
+              }}
+            >
+              ✕
+            </button>
+            <button
+              onClick={onClose}
+              style={{
+                background: "#3498db",
+                border: "none",
+                borderRadius: 8,
+                padding: "6px 16px",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Fertig
+            </button>
+          </div>
+        </div>
+
+        {/* Matrix: 4x13 Grid */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowX: "auto" }}>
+          {suits.map((suit) => (
+            <div key={suit.key} style={{ display: "flex", gap: 3, alignItems: "center", minWidth: 340 }}>
+              <span style={{ fontSize: 18, color: suit.color, minWidth: 20, textAlign: "center", fontWeight: "bold" }}>
+                {suit.symbol}
+              </span>
+              <div style={{ display: "flex", gap: 3, flex: 1, justifyContent: "space-between" }}>
+                {ranks.map((rank) => {
+                  const cardString = rank + suit.symbol;
+                  const isUsed = usedCards.has(cardString);
+                  const isCurrent =
+                    boards[playerIndex] &&
+                    boards[playerIndex][rowKey] &&
+                    boards[playerIndex][rowKey][slotIndex] === cardString;
+
+                  return (
+                    <button
+                      key={rank}
+                      disabled={isUsed && !isCurrent}
+                      onClick={() => onSelectCard(cardString)}
+                      style={{
+                        flex: 1,
+                        height: 38,
+                        minWidth: 23,
+                        padding: 0,
+                        borderRadius: 4,
+                        border: isCurrent ? "2px solid #3498db" : "0.5px solid #475569",
+                        background: isCurrent ? "#1e3a8a" : isUsed ? "#334155" : "#ffffff",
+                        color: isCurrent
+                          ? "#fff"
+                          : isUsed
+                          ? "#64748b"
+                          : suit.color === "#2c3e50"
+                          ? "#0f172a"
+                          : suit.color,
+                        cursor: isUsed && !isCurrent ? "not-allowed" : "pointer",
+                        opacity: isUsed && !isCurrent ? 0.25 : 1,
+                        fontSize: 12,
+                        fontWeight: "bold",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        transition: "all 0.1s ease",
+                      }}
+                    >
+                      <span>{rank}</span>
+                      <span style={{ fontSize: 10, marginTop: -2 }}>{suit.symbol}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [view, setView] = useState("home");
@@ -1462,6 +1610,7 @@ export default function App() {
   const [blackoutState, setBlackoutState] = useState(null);
   const [cameraState, setCameraState] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
+  const [activeCardEdit, setActiveCardEdit] = useState(null); // Cursor-Referenz {playerIndex, rowKey, slotIndex}
   const galleryRefs = useRef({});
 
   useEffect(() => {
@@ -1470,11 +1619,13 @@ export default function App() {
     setSessions(s);
     setLoading(false);
   }, []);
+
   const persist = useCallback((p, s) => {
     setPlayers(p);
     setSessions(s);
     saveData(p, s);
   }, []);
+
   const emptyBoard = () => ({
     top: ["", "", ""],
     middle: ["", "", "", "", ""],
@@ -1515,11 +1666,6 @@ export default function App() {
       if (next[bi]) delete next[bi];
       else next[bi] = true;
       return next;
-    });
-    setCapturedImages((prev) => {
-      const n = { ...prev };
-      delete n[bi];
-      return n;
     });
   };
 
@@ -1604,6 +1750,72 @@ export default function App() {
       delete n[bi];
       return n;
     });
+
+  const getNextSlot = (rowKey, slotIndex) => {
+    if (rowKey === "top") {
+      if (slotIndex < 2) return { rowKey: "top", slotIndex: slotIndex + 1 };
+      return { rowKey: "middle", slotIndex: 0 };
+    }
+    if (rowKey === "middle") {
+      if (slotIndex < 4) return { rowKey: "middle", slotIndex: slotIndex + 1 };
+      return { rowKey: "bottom", slotIndex: 0 };
+    }
+    if (rowKey === "bottom") {
+      if (slotIndex < 4) return { rowKey: "bottom", slotIndex: slotIndex + 1 };
+      return null;
+    }
+    return null;
+  };
+
+  const handleSelectCard = (cardString) => {
+    if (!activeCardEdit) return;
+    const { playerIndex, rowKey, slotIndex } = activeCardEdit;
+
+    setBoards((prev) => {
+      const next = [...prev];
+      const currentBoard = { ...next[playerIndex] };
+      currentBoard[rowKey] = [...currentBoard[rowKey]];
+      currentBoard[rowKey][slotIndex] = cardString;
+      next[playerIndex] = currentBoard;
+      return next;
+    });
+
+    const next = getNextSlot(rowKey, slotIndex);
+    if (next) {
+      setActiveCardEdit({
+        playerIndex,
+        rowKey: next.rowKey,
+        slotIndex: next.slotIndex,
+      });
+    } else {
+      setActiveCardEdit(null);
+    }
+  };
+
+  const handleClearCard = () => {
+    if (!activeCardEdit) return;
+    const { playerIndex, rowKey, slotIndex } = activeCardEdit;
+
+    setBoards((prev) => {
+      const next = [...prev];
+      const currentBoard = { ...next[playerIndex] };
+      currentBoard[rowKey] = [...currentBoard[rowKey]];
+      currentBoard[rowKey][slotIndex] = "";
+      next[playerIndex] = currentBoard;
+      return next;
+    });
+
+    const next = getNextSlot(rowKey, slotIndex);
+    if (next) {
+      setActiveCardEdit({
+        playerIndex,
+        rowKey: next.rowKey,
+        slotIndex: next.slotIndex,
+      });
+    } else {
+      setActiveCardEdit(null);
+    }
+  };
 
   const allReady =
     activePlayers.length > 0 &&
@@ -2040,29 +2252,26 @@ export default function App() {
         ))}
 
         <div style={{ padding: "1rem 0" }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginBottom: 16,
-            }}
-          >
+          {/* Ergonomischer Top-Header ohne Text, nur mit linksbündigem Zurück-Pfeil */}
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
             <button
               onClick={() => setView("home")}
               style={{
-                background: "transparent",
-                border: "none",
+                background: "var(--color-background-secondary)",
+                border: "0.5px solid var(--color-border-secondary)",
+                borderRadius: "50%",
+                width: 36,
+                height: 36,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 cursor: "pointer",
-                color: "var(--color-text-secondary)",
-                fontSize: 20,
+                color: "var(--color-text-primary)",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
               }}
             >
-              <i className="ti ti-arrow-left" />
+              <i className="ti ti-arrow-left" style={{ fontSize: 18 }} />
             </button>
-            <span style={{ fontWeight: 500, fontSize: 16 }}>
-              Karten eingeben
-            </span>
           </div>
 
           {scanStatus && (
@@ -2098,10 +2307,26 @@ export default function App() {
                 royalty={royalty}
                 fl={fl}
                 isForcedFoul={!!forcedFouls[bi]}
+                onSelectSlot={(rowKey, slotIndex) =>
+                  setActiveCardEdit({ playerIndex: bi, rowKey, slotIndex })
+                }
               />
             );
           })}
         </div>
+
+        {/* Custom Card Selection Modal Overlay */}
+        {activeCardEdit && (
+          <CardSelectorModal
+            activeSlot={activeCardEdit}
+            boards={boards}
+            players={players}
+            activePlayers={activePlayers}
+            onSelectCard={handleSelectCard}
+            onClearCard={handleClearCard}
+            onClose={() => setActiveCardEdit(null)}
+          />
+        )}
 
         <div
           style={{
@@ -2262,16 +2487,16 @@ export default function App() {
                             maxWidth: "100%",
                           }}
                         >
-                          {p ? p.name : "P" + (bi + 1)}
+                          {(p && p.name) || "P" + (bi + 1)}
                         </span>
 
-                        {img && (
+                        {img && !foul && (
                           <div
                             style={{
                               position: "relative",
                               width: "100%",
                               maxWidth: 72,
-                              aspectRatio: "1/1", // Geändert auf quadratische Foto-Vorschau
+                              aspectRatio: "1/1",
                             }}
                           >
                             <img
@@ -2322,38 +2547,47 @@ export default function App() {
                           </div>
                         )}
 
+                        {/* Kamera Button: Wird bei Foul unklickbar & ausgegraut */}
                         <button
-                          onMouseDown={(e) => handleCameraPress(e, bi)}
-                          onMouseUp={() => handleCameraRelease()}
-                          onMouseLeave={() => handleCameraRelease()}
-                          onTouchStart={(e) => handleCameraPress(e, bi)}
-                          onTouchEnd={() => handleCameraRelease()}
+                          onMouseDown={foul ? null : (e) => handleCameraPress(e, bi)}
+                          onMouseUp={foul ? null : () => handleCameraRelease()}
+                          onMouseLeave={foul ? null : () => handleCameraRelease()}
+                          onTouchStart={foul ? null : (e) => handleCameraPress(e, bi)}
+                          onTouchEnd={foul ? null : () => handleCameraRelease()}
                           onClick={() => {
+                            if (foul) return;
                             if (!wasLongPress.current) openInAppCamera(bi);
                             wasLongPress.current = false;
                           }}
+                          disabled={foul}
                           style={{
                             width: "100%",
                             padding: "8px 0",
                             borderRadius: 8,
-                            border: img
+                            border: foul
+                              ? "1.5px solid rgba(255,255,255,0.1)"
+                              : img
                               ? "1.5px solid #27ae60"
                               : "1.5px solid rgba(255,255,255,0.3)",
-                            background: img
+                            background: foul
+                              ? "rgba(255,255,255,0.03)"
+                              : img
                               ? "#27ae60"
                               : "rgba(255,255,255,0.12)",
-                            color: "#fff",
-                            cursor: "pointer",
+                            color: foul ? "rgba(255,255,255,0.2)" : "#fff",
+                            cursor: foul ? "not-allowed" : "pointer",
                             fontSize: 20,
                             lineHeight: 1,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
+                            opacity: foul ? 0.4 : 1,
                           }}
                         >
                           📷
                         </button>
 
+                        {/* Foul Button: Vollständig rückgängig machbar ohne Foto-Verlust */}
                         <button
                           onClick={() => toggleFoul(bi)}
                           style={{
@@ -2361,9 +2595,7 @@ export default function App() {
                             padding: "7px 0",
                             borderRadius: 8,
                             border: "none",
-                            background: foul
-                              ? "#e74c3c"
-                              : "rgba(255,255,255,0.12)",
+                            background: foul ? "#e74c3c" : "rgba(255,255,255,0.12)",
                             color: foul ? "#fff" : "rgba(255,255,255,0.7)",
                             fontWeight: foul ? 600 : 400,
                             fontSize: 13,
