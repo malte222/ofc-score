@@ -4,7 +4,7 @@
 export function getApiKey() {
     let key = localStorage.getItem("gemini_api_key");
     if (!key) {
-      key = prompt("Bitte gib deinen Google Gemini API-Key ein:");
+      key = import.meta.env.VITE_GEMINI_API_KEY;
       if (key) localStorage.setItem("gemini_api_key", key);
     }
     return key;
