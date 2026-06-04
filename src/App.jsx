@@ -1,1615 +1,31 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-
-const BACKGROUND_COLOR = "#134e2a"; // Klassisches Poker-Grün
-const BACKGROUND_IMAGE_URL = "";    // Optional: z. B. "https://domain.de/felt.jpg"
-
-const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"];
-const RANK_VAL = Object.fromEntries(RANKS.map((r, i) => [r, i + 2]));
-const BOTTOM_ROYALTIES = {
-  Straight: 2,
-  Flush: 4,
-  "Full House": 6,
-  "Four of a Kind": 10,
-  "Straight Flush": 15,
-  "Royal Flush": 25,
-};
-const MIDDLE_ROYALTIES = {
-  "Three of a Kind": 2,
-  Straight: 4,
-  Flush: 8,
-  "Full House": 12,
-  "Four of a Kind": 20,
-  "Straight Flush": 30,
-  "Royal Flush": 50,
-};
-const TOP_ROYALTIES = {
-  66: 1,
-  77: 2,
-  88: 3,
-  99: 4,
-  TT: 5,
-  JJ: 6,
-  QQ: 7,
-  KK: 8,
-  AA: 9,
-  222: 10,
-  333: 11,
-  444: 12,
-  555: 13,
-  666: 14,
-  777: 15,
-  888: 16,
-  999: 17,
-  TTT: 18,
-  JJJ: 19,
-  QQQ: 20,
-  KKK: 21,
-  AAA: 22,
-};
-const FL_TOP_QUALIFIERS = [
-  "QQ",
-  "KK",
-  "AA",
-  "222",
-  "333",
-  "444",
-  "555",
-  "666",
-  "777",
-  "888",
-  "999",
-  "TTT",
-  "JJJ",
-  "QQQ",
-  "KKK",
-  "AAA",
-];
-
-function parseCard(str) {
-  if (!str || str.length < 2) return null;
-  const rank = str.slice(0, -1);
-  const suit = str.slice(-1);
-  const val = RANK_VAL[rank];
-  if (val === undefined) return null;
-  return { rank, suit, val };
-}
-function countBy(arr) {
-  return arr.reduce((a, v) => {
-    a[v] = (a[v] || 0) + 1;
-    return a;
-  }, {});
-}
-function isSequential(vals) {
-  const s = [...new Set(vals)].sort((a, b) => b - a);
-  if (s.length < 5) return false;
-  return s[0] - s[4] === 4;
-}
-
-function evalHand(cards) {
-  if (!cards || cards.length === 0)
-    return { name: "High Card", rank: 0, tiebreakers: [] };
-  const valid = cards.filter((c) => c && c.val !== undefined && !isNaN(c.val));
-  if (valid.length === 0)
-    return { name: "High Card", rank: 0, tiebreakers: [] };
-  const sorted = [...valid].sort((a, b) => b.val - a.val);
-  const vals = sorted.map((c) => c.val),
-    suits = sorted.map((c) => c.suit),
-    n = valid.length;
-  if (n === 3) {
-    const counts = countBy(vals);
-    const trips = Object.entries(counts)
-      .filter((entry) => entry[1] >= 3)
-      .map((entry) => +entry[0]);
-    const pairs = Object.entries(counts)
-      .filter((entry) => entry[1] >= 2)
-      .map((entry) => +entry[0]);
-    if (trips.length)
-      return {
-        name: "Three of a Kind",
-        rank: 7,
-        trips: trips[0],
-        tiebreakers: [trips[0]],
-      };
-    if (pairs.length) {
-      const pv = Math.max(...pairs),
-        k = vals.find((v) => v !== pv);
-      return {
-        name: "Pair",
-        rank: 2,
-        pair: pv,
-        tiebreakers: k !== undefined ? [pv, k] : [pv],
-      };
-    }
-    return { name: "High Card", rank: 1, high: vals[0], tiebreakers: vals };
-  }
-  const isFlush = new Set(suits).size === 1,
-    ws = vals.slice(0, 5).join(",") === "14,5,4,3,2",
-    isSt = isSequential(vals) || ws;
-  const counts = countBy(vals),
-    groups = Object.entries(counts).sort((a, b) => b[1] - a[1] || b[0] - a[0]);
-  const g0 = groups[0] || [],
-    g1 = groups[1] || [];
-  if (isFlush && isSt) {
-    if (vals[0] === 14 && vals[1] === 13 && !ws)
-      return { name: "Royal Flush", rank: 10, tiebreakers: [14] };
-    return { name: "Straight Flush", rank: 9, tiebreakers: [ws ? 5 : vals[0]] };
-  }
-  if (g0[1] === 4)
-    return {
-      name: "Four of a Kind",
-      rank: 8,
-      quad: +g0[0],
-      tiebreakers: [+g0[0], ...(g1[0] ? [+g1[0]] : [])],
-    };
-  if (g0[1] === 3 && g1[1] >= 2)
-    return {
-      name: "Full House",
-      rank: 7,
-      trips: +g0[0],
-      pair: +g1[0],
-      tiebreakers: [+g0[0], +g1[0]],
-    };
-  if (isFlush) return { name: "Flush", rank: 6, tiebreakers: vals };
-  if (isSt)
-    return {
-      name: "Straight",
-      rank: 5,
-      high: ws ? 5 : vals[0],
-      tiebreakers: [ws ? 5 : vals[0]],
-    };
-  if (g0[1] === 3) {
-    const k = vals.filter((v) => v !== +g0[0]);
-    return {
-      name: "Three of a Kind",
-      rank: 4,
-      trips: +g0[0],
-      tiebreakers: [+g0[0], ...k],
-    };
-  }
-  if (g0[1] === 2 && g1[1] === 2) {
-    const pv = [+g0[0], +g1[0]].sort((a, b) => b - a),
-      k = vals.find((v) => v !== pv[0] && v !== pv[1]);
-    return {
-      name: "Two Pair",
-      rank: 3,
-      pairs: pv,
-      tiebreakers: k !== undefined ? [...pv, k] : pv,
-    };
-  }
-  if (g0[1] === 2) {
-    const k = vals.filter((v) => v !== +g0[0]);
-    return {
-      name: "One Pair",
-      rank: 2,
-      pair: +g0[0],
-      tiebreakers: [+g0[0], ...k],
-    };
-  }
-  return { name: "High Card", rank: 1, high: vals[0], tiebreakers: vals };
-}
-
-function compareHands(h1, h2) {
-  if (h1.rank !== h2.rank) return h1.rank - h2.rank;
-  const t1 = h1.tiebreakers || [],
-    t2 = h2.tiebreakers || [];
-  for (let i = 0; i < Math.max(t1.length, t2.length); i++) {
-    const a = t1[i] !== undefined ? t1[i] : 0,
-      b = t2[i] !== undefined ? t2[i] : 0;
-    if (a !== b) return a - b;
-  }
-  return 0;
-}
-function parsedCards(row) {
-  return row.filter(Boolean).map(parseCard).filter(Boolean);
-}
-function isFouled(board) {
-  if (
-    parsedCards(board.top).length < 3 ||
-    parsedCards(board.middle).length < 5 ||
-    parsedCards(board.bottom).length < 5
-  )
-    return false;
-  const top = evalHand(parsedCards(board.top)),
-    mid = evalHand(parsedCards(board.middle)),
-    bot = evalHand(parsedCards(board.bottom));
-  return compareHands(bot, mid) < 0 || compareHands(mid, top) < 0;
-}
-function getTopRoyalty(board) {
-  const c = parsedCards(board.top);
-  if (c.length < 3) return 0;
-  const h = evalHand(c);
-  if (h.name === "Three of a Kind" && !isNaN(h.trips)) {
-    const rChar = RANKS[h.trips - 2];
-    return rChar ? TOP_ROYALTIES[rChar.repeat(3)] || 0 : 0;
-  }
-  if (h.name === "Pair" && !isNaN(h.pair)) {
-    const rChar = RANKS[h.pair - 2];
-    return rChar ? TOP_ROYALTIES[rChar.repeat(2)] || 0 : 0;
-  }
-  return 0;
-}
-function getMidRoyalty(board) {
-  const c = parsedCards(board.middle);
-  if (c.length < 5) return 0;
-  return MIDDLE_ROYALTIES[evalHand(c).name] || 0;
-}
-function getBotRoyalty(board) {
-  const c = parsedCards(board.bottom);
-  if (c.length < 5) return 0;
-  return BOTTOM_ROYALTIES[evalHand(c).name] || 0;
-}
-function getTotalRoyalties(board) {
-  if (isFouled(board)) return 0;
-  return getTopRoyalty(board) + getMidRoyalty(board) + getBotRoyalty(board);
-}
-function qualifiesFL(board) {
-  if (isFouled(board)) return false;
-  const c = parsedCards(board.top);
-  if (c.length < 3) return false;
-  const h = evalHand(c);
-  if (h.name === "Pair" && !isNaN(h.pair)) {
-    const rChar = RANKS[h.pair - 2];
-    return rChar ? FL_TOP_QUALIFIERS.includes(rChar.repeat(2)) : false;
-  }
-  return h.name === "Three of a Kind";
-}
-
-function compareRowHands(r1, r2) {
-  const d = compareHands(evalHand(parsedCards(r1)), evalHand(parsedCards(r2)));
-  return d > 0 ? 1 : d < 0 ? -1 : 0;
-}
-function calcPoints(boards, forcedFouls) {
-  const n = boards.length;
-  const fouled = boards.map((b, i) => forcedFouls[i] || isFouled(b));
-  const royalties = boards.map((b, i) =>
-    fouled[i] ? 0 : getTotalRoyalties(b)
-  );
-  const delta = new Array(n).fill(0);
-  for (let i = 0; i < n; i++)
-    for (let j = i + 1; j < n; j++) {
-      const fi = fouled[i],
-        fj = fouled[j];
-      if (fi && fj) continue;
-      if (fi) {
-        delta[i] -= 6;
-        delta[j] += 6;
-        continue;
-      }
-      if (fj) {
-        delta[i] += 6;
-        delta[j] -= 6;
-        continue;
-      }
-      const tc = compareRowHands(boards[i].top, boards[j].top),
-        mc = compareRowHands(boards[i].middle, boards[j].middle),
-        bc = compareRowHands(boards[i].bottom, boards[j].bottom);
-      let iW = 0,
-        jW = 0;
-      if (tc > 0) iW++;
-      else if (tc < 0) jW++;
-      if (mc > 0) iW++;
-      else if (mc < 0) jW++;
-      if (bc > 0) iW++;
-      else if (bc < 0) jW++;
-      let pts = iW - jW;
-      if (iW === 3) pts += 3;
-      if (jW === 3) pts -= 3;
-      delta[i] += pts;
-      delta[j] -= pts;
-    }
-  for (let i = 0; i < n; i++) {
-    const r = royalties[i];
-    if (r > 0) {
-      delta[i] += r * (n - 1);
-      for (let j = 0; j < n; j++) {
-        if (j !== i) delta[j] -= r;
-      }
-    }
-  }
-  return { delta, royalties, fouled };
-}
-
-// ─── Helper to check if a Board is fully manually entered ───────────────────
-function isBoardFilled(board) {
-  if (!board) return false;
-  return (
-    board.top && board.top.every(Boolean) &&
-    board.middle && board.middle.every(Boolean) &&
-    board.bottom && board.bottom.every(Boolean)
-  );
-}
-
-function getApiKey() {
-  let key = localStorage.getItem("gemini_api_key");
-  if (!key) {
-    key = prompt("Bitte gib deinen Google Gemini API-Key ein:");
-    if (key) localStorage.setItem("gemini_api_key", key);
-  }
-  return key;
-}
-async function recognizeAllBoards(images) {
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
-  const valid = images.filter(Boolean);
-  const n = valid.length;
-  if (n === 0) return null;
-  const prompt = `Du bist ein Experte für das Erkennen von Spielkarten auf OFC Poker Board Fotos.
-Du erhältst ${n} Bild(er). Jedes zeigt genau ein OFC-Board mit 3 Reihen (Top:3, Middle:5, Bottom:5 Karten).
-Antworte NUR mit einem JSON-Array mit ${n} Objekten. Kein anderer Text.
-Format: Wert+Farbe (A/K/Q/J/T/9-2 + s/h/d/c). "10" → "T". Nicht erkennbar → "".
-[{"top":["Ah","Kd","7s"],"middle":["Ts","9h","8d","7c","6s"],"bottom":["As","Ad","Ac","Kh","Ks"]}]`;
-  const parts = [{ text: prompt }];
-  for (const img of valid)
-    parts.push({ inline_data: { mime_type: img.mimeType, data: img.base64 } });
-  try {
-    const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: { responseMimeType: "application/json" },
-        }),
-      }
-    );
-    const data = await resp.json();
-    if (data.error) {
-      alert(`Gemini Fehler: ${data.error.message}`);
-      return null;
-    }
-    let text = data.candidates[0].content.parts[0].text
-      .replace(/```json/gi, "")
-      .replace(/```/gi, "")
-      .trim();
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch (err) {
-    alert(`Fehler: ${err.message}`);
-    return null;
-  }
-}
-function normalizeCard(c) {
-  if (!c || c === "??" || c === "") return "";
-  const s = String(c).trim();
-  if (s.length < 2) return "";
-  const sm = { s: "♠", h: "♥", d: "♦", c: "♣", S: "♠", H: "♥", D: "♦", C: "♣" };
-  let rank = s.slice(0, -1).toUpperCase();
-  if (rank === "10") rank = "T";
-  return rank + (sm[s.slice(-1)] || s.slice(-1));
-}
-
-// ─── Storage ─────────────────────────────────────────────────────────────────
-function loadData() {
-  try {
-    return {
-      players: JSON.parse(localStorage.getItem("ofc:players") || "[]"),
-      sessions: JSON.parse(localStorage.getItem("ofc:sessions") || "[]"),
-    };
-  } catch {
-    return { players: [], sessions: [] };
-  }
-}
-function saveData(p, s) {
-  try {
-    localStorage.setItem("ofc:players", JSON.stringify(p));
-    localStorage.setItem("ofc:sessions", JSON.stringify(s));
-  } catch (e) {}
-}
-
-function InAppCamera({ onCapture, onCancel, onSelectFile }) {
-  const videoRef = useRef();
-  const streamRef = useRef();
-  const containerRef = useRef();
-
-  const [ready, setReady] = useState(false);
-  const [error, setError] = useState(null);
-  const [facingMode, setFacingMode] = useState("environment");
-
-  const [zoom, setZoom] = useState(1);
-  const maxZoom = 4;
-  const minZoom = 1;
-
-  const initialDistRef = useRef(null);
-  const initialZoomRef = useRef(1);
-
-  const [torch, setTorch] = useState(false);
-  const [hasTorch, setHasTorch] = useState(false);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const preventDefaultZoom = (e) => {
-      if (e.touches.length > 1) {
-        e.preventDefault();
-      }
-    };
-
-    container.addEventListener("touchmove", preventDefaultZoom, {
-      passive: false,
-    });
-    return () => {
-      container.removeEventListener("touchmove", preventDefaultZoom);
-    };
-  }, []);
-
-  const startStream = useCallback(async (facing) => {
-    setTorch(false);
-    setHasTorch(false);
-    setZoom(1);
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: facing,
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
-
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play().catch(() => {});
-
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack && typeof videoTrack.getCapabilities === "function") {
-          const caps = videoTrack.getCapabilities();
-          if (caps.torch) {
-            setHasTorch(true);
-          }
-        }
-
-        setReady(true);
-        setError(null);
-      }
-    } catch (err) {
-      if (err.name !== "AbortError" && err.name !== "DOMException") {
-        setError("Kamera-Zugriff verweigert. In Sandboxed Previews (StackBlitz) nutzen Sie bitte die Foto-Auswahl.");
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    if (isMounted) {
-      startStream(facingMode);
-    }
-    return () => {
-      isMounted = false;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
-    };
-  }, [facingMode, startStream]);
-
-  const handleTouchStart = (e) => {
-    if (e.touches.length === 2) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      initialDistRef.current = dist;
-      initialZoomRef.current = zoom;
-    }
-  };
-
-  const handleTouchMove = (e) => {
-    if (e.touches.length === 2 && initialDistRef.current !== null) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const factor = dist / initialDistRef.current;
-      let nextZoom = initialZoomRef.current * factor;
-      nextZoom = Math.max(minZoom, Math.min(maxZoom, nextZoom));
-      setZoom(nextZoom);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    initialDistRef.current = null;
-  };
-
-  const handleSliderChange = (val) => {
-    setZoom(val);
-  };
-
-  const toggleTorch = () => {
-    const videoTrack =
-      streamRef.current && streamRef.current.getVideoTracks()[0];
-    if (videoTrack && hasTorch) {
-      const nextTorch = !torch;
-      videoTrack
-        .applyConstraints({ advanced: [{ torch: nextTorch }] })
-        .then(() => {
-          setTorch(nextTorch);
-        })
-        .catch(() => {});
-    }
-  };
-
-  const shoot = () => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    const w = video.videoWidth;
-    const h = video.videoHeight;
-    const baseSquareSize = Math.min(w, h);
-    const croppedSensorSize = baseSquareSize / zoom;
-    const x = (w - croppedSensorSize) / 2;
-    const y = (h - croppedSensorSize) / 2;
-
-    const canvas = document.createElement("canvas");
-    const outputSize = 1080;
-    canvas.width = outputSize;
-    canvas.height = outputSize;
-    const ctx = canvas.getContext("2d");
-
-    ctx.drawImage(
-      video,
-      x,
-      y,
-      croppedSensorSize,
-      croppedSensorSize,
-      0,
-      0,
-      outputSize,
-      outputSize
-    );
-
-    const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    onCapture(dataUrl);
-  };
-
-  const flipCamera = () => {
-    setZoom(1);
-    setFacingMode((f) => (f === "environment" ? "user" : "environment"));
-  };
-
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "#000",
-        zIndex: 300,
-        display: "flex",
-        flexDirection: "column",
-        touchAction: "none",
-      }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-    >
-      {error ? (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#fff",
-            padding: "2rem",
-            textAlign: "center",
-            gap: 20,
-          }}
-        >
-          <div style={{ fontSize: 48 }}>📷</div>
-          <div style={{ fontSize: 15, maxWidth: 300, lineHeight: 1.5 }}>{error}</div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-            <button
-              onClick={onCancel}
-              style={{
-                padding: "10px 24px",
-                borderRadius: 10,
-                border: "none",
-                background: "rgba(255,255,255,0.2)",
-                color: "#fff",
-                fontSize: 15,
-                cursor: "pointer",
-              }}
-            >
-              Abbrechen
-            </button>
-            {onSelectFile && (
-              <button
-                onClick={onSelectFile}
-                style={{
-                  padding: "10px 24px",
-                  borderRadius: 10,
-                  border: "none",
-                  background: "#3498db",
-                  color: "#fff",
-                  fontSize: 15,
-                  cursor: "pointer",
-                  fontWeight: "bold",
-                }}
-              >
-                Foto hochladen / Galerie
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <>
-          <div
-            style={{
-              width: "100%",
-              maxWidth: "400px",
-              aspectRatio: "1/1",
-              margin: "auto auto 0 auto",
-              position: "relative",
-              overflow: "hidden",
-              background: "#000",
-              border: "3px solid rgba(255,255,255,0.3)",
-              borderRadius: "16px",
-              boxShadow: "0 8px 32px rgba(0,0,0,0.8)",
-            }}
-          >
-            <video
-              ref={videoRef}
-              playsInline
-              muted
-              autoPlay
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block",
-                transform: "scale(" + zoom + ")",
-                transformOrigin: "center center",
-                transition: "transform 0.05s ease-out",
-              }}
-            />
-
-            {["tl", "tr", "bl", "br"].map((c) => (
-              <div
-                key={c}
-                style={{
-                  position: "absolute",
-                  top: c.startsWith("t") ? 16 : "auto",
-                  bottom: c.startsWith("b") ? 16 : "auto",
-                  left: c.endsWith("l") ? 16 : "auto",
-                  right: c.endsWith("r") ? 16 : "auto",
-                  width: 28,
-                  height: 28,
-                  borderTop: c.startsWith("t") ? "3px solid #fff" : "none",
-                  borderBottom: c.startsWith("b") ? "3px solid #fff" : "none",
-                  borderLeft: c.endsWith("l") ? "3px solid #fff" : "none",
-                  borderRight: c.endsWith("r") ? "3px solid #fff" : "none",
-                }}
-              />
-            ))}
-          </div>
-
-          <div
-            style={{
-              width: "100%",
-              maxWidth: "400px",
-              margin: "0 auto auto auto",
-              padding: "20px 16px",
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: 16,
-              background: "transparent",
-            }}
-          >
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                color: "#fff",
-              }}
-            >
-              <span style={{ fontSize: 13, minWidth: 35, color: "#95a5a6" }}>
-                1.0x
-              </span>
-              <input
-                type="range"
-                min={minZoom}
-                max={maxZoom}
-                step="0.05"
-                value={zoom}
-                onChange={(e) => handleSliderChange(parseFloat(e.target.value))}
-                style={{
-                  flex: 1,
-                  height: 8,
-                  borderRadius: 4,
-                  background: "rgba(255,255,255,0.2)",
-                  outline: "none",
-                  WebkitAppearance: "none",
-                  accentColor: "#3498db",
-                }}
-              />
-              <span
-                style={{
-                  fontSize: 14,
-                  fontWeight: "bold",
-                  minWidth: 45,
-                  textAlign: "right",
-                  color: "#3498db",
-                }}
-              >
-                {zoom.toFixed(1)}x
-              </span>
-            </div>
-
-            <div
-              style={{
-                width: "100%",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <button
-                onClick={toggleTorch}
-                disabled={!hasTorch}
-                style={{
-                  background: torch ? "#f1c40f" : "rgba(255,255,255,0.12)",
-                  border: "none",
-                  color: torch ? "#000" : "#fff",
-                  padding: "8px 16px",
-                  borderRadius: 20,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: hasTorch ? "pointer" : "not-allowed",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  opacity: hasTorch ? 1 : 0.4,
-                }}
-              >
-                <span>💡</span>{" "}
-                {hasTorch
-                  ? torch
-                    ? "Licht AN"
-                    : "Licht AUS"
-                  : "Licht blockiert"}
-              </button>
-
-              <span style={{ color: "#7f8c8d", fontSize: 12 }}>
-                Pinch zum Zoomen aktiv
-              </span>
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: "#000",
-              padding: "20px 32px 36px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <button
-              onClick={onCancel}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#7f8c8d",
-                fontSize: 15,
-                cursor: "pointer",
-                padding: "8px 12px",
-              }}
-            >
-              Abbrechen
-            </button>
-
-            <button
-              onClick={shoot}
-              disabled={!ready}
-              style={{
-                width: 72,
-                height: 72,
-                borderRadius: "50%",
-                border: "4px solid #fff",
-                background: ready ? "#fff" : "rgba(255,255,255,0.3)",
-                cursor: ready ? "pointer" : "not-allowed",
-                padding: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <div
-                style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: "50%",
-                  background: ready ? "#fff" : "transparent",
-                  border: "2px solid #ccc",
-                }}
-              />
-            </button>
-
-            <button
-              onClick={flipCamera}
-              style={{
-                background: "rgba(255,255,255,0.15)",
-                border: "none",
-                borderRadius: "50%",
-                width: 44,
-                height: 44,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                fontSize: 22,
-              }}
-            >
-              🔄
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function ImageBlackoutEditor({
-  src,
-  initialStrokes = [],
-  onConfirm,
-  onCancel,
-}) {
-  const canvasRef = useRef(),
-    imgRef = useRef();
-  const [drawing, setDrawing] = useState(false);
-  const [strokes, setStrokes] = useState(initialStrokes);
-  const [currentStroke, setCurrentStroke] = useState([]);
-  const [imgSize, setImgSize] = useState({ w: 0, h: 0 });
-
-  useEffect(() => {
-    const img = new Image();
-    img.onload = () => {
-      const maxW = Math.min(img.width, window.innerWidth - 32);
-      const scale = maxW / img.width,
-        w = maxW,
-        h = img.height * scale;
-      setImgSize({ w, h });
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(img, 0, 0, w, h);
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 28;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      initialStrokes.forEach((pts) => {
-        if (!pts.length) return;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        pts.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
-        ctx.stroke();
-      });
-      imgRef.current = img;
-    };
-    img.src = src;
-  }, [src, initialStrokes]);
-
-  const redraw = useCallback(
-    (all, active) => {
-      const canvas = canvasRef.current;
-      if (!canvas || !imgRef.current) return;
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(imgRef.current, 0, 0, imgSize.w, imgSize.h);
-      ctx.strokeStyle = "#000";
-      ctx.lineWidth = 28;
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      const draw = (pts) => {
-        if (!pts.length) return;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        pts.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
-        ctx.stroke();
-      };
-      all.forEach(draw);
-      if (active && active.length > 0) draw(active);
-    },
-    [imgSize]
-  );
-
-  const getPos = (e) => {
-    const r = canvasRef.current.getBoundingClientRect(),
-      cx = e.touches ? e.touches[0].clientX : e.clientX,
-      cy = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: cx - r.left, y: cy - r.top };
-  };
-  const onDown = (e) => {
-    e.preventDefault();
-    const p = getPos(e);
-    setDrawing(true);
-    setCurrentStroke([p]);
-    redraw(strokes, [p]);
-  };
-  const onMove = (e) => {
-    e.preventDefault();
-    if (!drawing) return;
-    const p = getPos(e);
-    setCurrentStroke((prev) => {
-      const ns = [...prev, p];
-      redraw(strokes, ns);
-      return ns;
-    });
-  };
-  const onUp = (e) => {
-    e.preventDefault();
-    if (!drawing) return;
-    setDrawing(false);
-    if (currentStroke.length > 0) {
-      const ns = [...strokes, currentStroke];
-      setStrokes(ns);
-      redraw(ns, []);
-    }
-    setCurrentStroke([]);
-  };
-  const undo = () => {
-    const ns = strokes.slice(0, -1);
-    setStrokes(ns);
-    redraw(ns, []);
-  };
-  const confirm = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    onConfirm(canvas.toDataURL("image/jpeg", 0.92).split(",")[1], strokes);
-  };
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.95)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        zIndex: 300,
-        overflowY: "auto",
-        padding: "12px 0 0 0",
-      }}
-    >
-      <div
-        style={{
-          background: "var(--color-background-primary)",
-          borderRadius: 12,
-          padding: "16px",
-          width: "100%",
-          maxWidth: Math.min(imgSize.w + 24, window.innerWidth - 8),
-          boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
-          marginBottom: "120px",
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-start",
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <span
-            style={{
-              fontWeight: 600,
-              fontSize: 15,
-              color: "var(--color-text-primary)",
-            }}
-          >
-            Bereiche schwärzen
-          </span>
-        </div>
-        <p
-          style={{
-            fontSize: 11,
-            color: "var(--color-text-secondary)",
-            marginBottom: 8,
-          }}
-        >
-          Mit dem Finger über Bereiche malen, die geschwärzt werden sollen.
-        </p>
-        <canvas
-          ref={canvasRef}
-          style={{
-            display: "block",
-            borderRadius: 8,
-            touchAction: "none",
-            cursor: "crosshair",
-            maxWidth: "100%",
-          }}
-          onMouseDown={onDown}
-          onMouseMove={onMove}
-          onMouseUp={onUp}
-          onTouchStart={onDown}
-          onTouchMove={onMove}
-          onTouchEnd={onUp}
-        />
-      </div>
-
-      <div
-        style={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          background: "#1a5276",
-          padding: "20px 32px 36px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          zIndex: 301,
-          boxShadow: "0 -4px 20px rgba(0,0,0,0.3)",
-        }}
-      >
-        <button
-          onClick={onCancel}
-          style={{
-            background: "transparent",
-            border: "none",
-            color: "#7f8c8d",
-            fontSize: 15,
-            cursor: "pointer",
-            padding: "8px 12px",
-          }}
-        >
-          Abbrechen
-        </button>
-
-        <button
-          onClick={confirm}
-          style={{
-            width: 72,
-            height: 72,
-            borderRadius: "50%",
-            border: "4px solid #fff",
-            background: "#27ae60",
-            cursor: "pointer",
-            padding: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            boxShadow: "0 4px 15px rgba(39, 174, 96, 0.4)",
-          }}
-        >
-          <span
-            style={{
-              fontSize: 38,
-              color: "#fff",
-              fontWeight: 700,
-              lineHeight: 1,
-            }}
-          >
-            ✓
-          </span>
-        </button>
-
-        <button
-          onClick={undo}
-          disabled={!strokes.length}
-          style={{
-            background: strokes.length
-              ? "rgba(255,255,255,0.15)"
-              : "rgba(255,255,255,0.08)",
-            border: "none",
-            borderRadius: "50%",
-            width: 44,
-            height: 44,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: strokes.length ? "pointer" : "not-allowed",
-            fontSize: 24,
-            color: strokes.length ? "#fff" : "#7f8c8d",
-            opacity: strokes.length ? 1 : 0.6,
-            transition: "all 0.1s ease",
-          }}
-        >
-          ↩
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function CardSlot({ value, isActive, onClick }) {
-  const suitColor = (v) => {
-    if (!v) return "#cbd5e1"; // Graues Plus-Symbol bei freien Slots
-    const s = v.slice(-1);
-    if (s === "♠") return "#000000"; // Pik: Schwarz
-    if (s === "♥") return "#e74c3c"; // Herz: Rot
-    if (s === "♦") return "#3498db"; // Karo: Blau
-    if (s === "♣") return "#b38f00"; // Kreuz: Dunkelgelb
-    return "#ffffff";
-  };
-
-  const borderStyle = isActive
-    ? "2px solid #f39c12" // Kräftiges Orange für den aktiven Cursor
-    : value
-    ? "1px solid rgba(0, 0, 0, 0.15)" // Subtiler Rand für echte Karten
-    : "1.5px dashed rgba(255, 255, 255, 0.35)"; // Gestrichelt für leere Slots
-
-  return (
-    <div
-      onClick={onClick}
-      title="Klicken zum Auswählen"
-      style={{
-        position: "relative",
-        width: 36, 
-        height: 50, 
-        borderRadius: 6,
-        border: borderStyle,
-        background: isActive
-          ? "rgba(243, 156, 18, 0.25)" 
-          : "#ffffff", // IMMER reines, deckendes Weiß als Hintergrund
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 1,
-        boxSizing: "border-box",
-        cursor: "pointer",
-        color: suitColor(value),
-        transition: "all 0.1s ease",
-        boxShadow: value ? "0 2px 4px rgba(0,0,0,0.15)" : "none",
-      }}
-    >
-      {value ? (
-        <>
-          <span
-            style={{
-              fontWeight: 700,
-              fontSize: 12,
-              lineHeight: 1.1,
-              textAlign: "center",
-            }}
-          >
-            {value.slice(0, -1)}
-          </span>
-          <span
-            style={{
-              fontSize: 14,
-              lineHeight: 1.1,
-              textAlign: "center",
-            }}
-          >
-            {value.slice(-1)}
-          </span>
-        </>
-      ) : (
-        <span
-          style={{
-            color: "rgba(0, 0, 0, 0.25)",
-            fontSize: 16,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            height: "100%",
-            width: "100%",
-            fontWeight: "bold"
-          }}
-        >
-          +
-        </span>
-      )}
-    </div>
-  );
-}
-
-function BoardEditor({
-  board,
-  onChange,
-  label,
-  fouled,
-  royalty,
-  fl,
-  isForcedFoul,
-  playerIndex,
-  activeCardEdit,
-  onSelectSlot,
-}) {
-  const rowDef = [
-    { key: "top", label: "Top", count: 3 },
-    { key: "middle", label: "Middle", count: 5 },
-    { key: "bottom", label: "Bottom", count: 5 },
-  ];
-  const getHandName = (key, count) => {
-    const f = board[key].filter(Boolean);
-    if (f.length < count) return "";
-    return evalHand(f.map(parseCard).filter(Boolean)).name;
-  };
-
-  if (isForcedFoul)
-    return (
-      <div
-        style={{
-          background: "rgba(255, 255, 255, 0.08)",
-          border: "1.5px solid #e74c3c",
-          borderRadius: 12,
-          padding: "0.75rem 1rem",
-          marginBottom: 10,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <span style={{ fontWeight: 500, fontSize: 14, color: "#ffffff" }}>{label}</span>
-          <span
-            style={{
-              background: "#e74c3c",
-              color: "#ffffff",
-              fontSize: 11,
-              padding: "2px 8px",
-              borderRadius: 8,
-              fontWeight: 500,
-            }}
-          >
-            Foul
-          </span>
-        </div>
-      </div>
-    );
-
-  return (
-    <div
-      style={{
-        background: "rgba(255, 255, 255, 0.08)",
-        border: fouled
-          ? "1.5px solid #e74c3c"
-          : "0.5px solid rgba(255, 255, 255, 0.15)",
-        borderRadius: 12,
-        padding: "0.75rem 1rem",
-        marginBottom: 10,
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginBottom: 8,
-        }}
-      >
-        <span style={{ fontWeight: 600, fontSize: 14, color: "#ffffff" }}>{label}</span>
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          {fl && (
-            <span
-              style={{
-                background: "#2ecc71",
-                color: "#ffffff",
-                fontSize: 10,
-                padding: "1px 6px",
-                borderRadius: 6,
-              }}
-            >
-              Fantasyland
-            </span>
-          )}
-          {fouled && (
-            <span
-              style={{
-                background: "#e74c3c",
-                color: "#ffffff",
-                fontSize: 10,
-                padding: "1px 6px",
-                borderRadius: 6,
-              }}
-            >
-              Fouled
-            </span>
-          )}
-          {royalty > 0 && (
-            <span
-              style={{
-                background: "#f1c40f",
-                color: "#1e293b",
-                fontSize: 10,
-                padding: "1px 6px",
-                borderRadius: 6,
-                fontWeight: "bold"
-              }}
-            >
-              +{royalty} Roy
-            </span>
-          )}
-        </div>
-      </div>
-
-      {rowDef.map(({ key, count }) => (
-        <div
-          key={key}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: 6,
-          }}
-        >
-          <div style={{ display: "flex", gap: 5 }}>
-            {Array.from({ length: count }).map((_, i) => {
-              const isCurrent =
-                activeCardEdit &&
-                activeCardEdit.playerIndex === playerIndex &&
-                activeCardEdit.rowKey === key &&
-                activeCardEdit.slotIndex === i;
-
-              return (
-                <CardSlot
-                  key={i}
-                  value={board[key][i] || ""}
-                  isActive={isCurrent}
-                  onClick={() => onSelectSlot(key, i)}
-                />
-              );
-            })}
-          </div>
-
-          <span
-            style={{
-              fontSize: 11,
-              color: "rgba(255, 255, 255, 0.6)",
-              maxWidth: 90,
-              textAlign: "right",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              paddingLeft: 8,
-            }}
-          >
-            {getHandName(key, count)}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CardSelectorModal({
-  activeSlot,
-  boards,
-  players,
-  activePlayers,
-  onSelectCard,
-  onClearCard,
-  onClose,
-}) {
-  if (!activeSlot) return null;
-  const { playerIndex, rowKey, slotIndex } = activeSlot;
-  const player = players[activePlayers[playerIndex]];
-  const playerName = player ? player.name : "Spieler " + (playerIndex + 1);
-
-  const usedCards = new Set();
-  boards.forEach((b) => {
-    if (!b) return;
-    ["top", "middle", "bottom"].forEach((rk) => {
-      if (b[rk]) {
-        b[rk].forEach((c) => {
-          if (c) usedCards.add(c);
-        });
-      }
-    });
-  });
-
-  const suits = [
-    { key: "s", symbol: "♠", color: "#000000" }, // Pik: Schwarz
-    { key: "h", symbol: "♥", color: "#e74c3c" }, // Herz: Rot
-    { key: "d", symbol: "♦", color: "#3498db" }, // Karo: Blau
-    { key: "c", symbol: "♣", color: "#b38f00" }, // Kreuz: Dunkelgelb
-  ];
-  const ranks = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"];
-
-  const rowLabel = rowKey.charAt(0).toUpperCase() + rowKey.slice(1);
-  const maxSlots = rowKey === "top" ? 3 : 5;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(15, 23, 42, 0.65)", // Boards im Hintergrund schimmern durch
-        zIndex: 400,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "flex-end",
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: "#1e293b",
-          borderTopLeftRadius: 16,
-          borderTopRightRadius: 16,
-          width: "100%",
-          maxWidth: 680,
-          margin: "0 auto",
-          padding: "16px 16px 36px 16px",
-          boxSizing: "border-box",
-          display: "flex",
-          flexDirection: "column",
-          gap: 16,
-          boxShadow: "0 -8px 32px rgba(0,0,0,0.5)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: "#fff" }}>
-              {playerName}
-            </div>
-            <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 2 }}>
-              {rowLabel} - Karte {slotIndex + 1} von {maxSlots}
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            <button
-              onClick={onClearCard}
-              title="Karte entfernen"
-              style={{
-                background: "#e74c3c",
-                border: "none",
-                borderRadius: "50%",
-                width: 32,
-                height: 32,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                color: "#fff",
-                fontSize: 16,
-                fontWeight: "bold",
-                boxShadow: "0 2px 8px rgba(231, 76, 60, 0.3)",
-              }}
-            >
-              ✕
-            </button>
-            <button
-              onClick={onClose}
-              style={{
-                background: "#3498db",
-                border: "none",
-                borderRadius: 8,
-                padding: "6px 16px",
-                color: "#fff",
-                fontSize: 14,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              Schließen
-            </button>
-          </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-            overflowX: "auto",
-          }}
-        >
-          {suits.map((suit) => (
-            <div
-              key={suit.key}
-              style={{
-                display: "flex",
-                gap: 3,
-                alignItems: "center",
-                minWidth: 340,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 18,
-                  color: suit.color,
-                  minWidth: 20,
-                  textAlign: "center",
-                  fontWeight: "bold",
-                }}
-              >
-                {suit.symbol}
-              </span>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 3,
-                  flex: 1,
-                  justifyContent: "space-between",
-                }}
-              >
-                {ranks.map((rank) => {
-                  const cardString = rank + suit.symbol;
-                  const isUsed = usedCards.has(cardString);
-                  const isCurrent =
-                    boards[playerIndex] &&
-                    boards[playerIndex][rowKey] &&
-                    boards[playerIndex][rowKey][slotIndex] === cardString;
-
-                  return (
-                    <button
-                      key={rank}
-                      disabled={isUsed && !isCurrent}
-                      onClick={() => onSelectCard(cardString)}
-                      style={{
-                        flex: 1,
-                        height: 38,
-                        minWidth: 23,
-                        padding: 0,
-                        borderRadius: 4,
-                        border: isCurrent
-                          ? "2px solid #f39c12" 
-                          : "0.5px solid #475569",
-                        background: isCurrent 
-                          ? "rgba(243, 156, 18, 0.35)" 
-                          : isUsed 
-                          ? "#1e293b" 
-                          : "#ffffff", // Pure white für beste Selektierbarkeit
-                        color: isCurrent
-                          ? "#f39c12"
-                          : isUsed
-                          ? "#475569"
-                          : "#000000", // Schwarze Ränge auf weißem Grund
-                        cursor:
-                          isUsed && !isCurrent ? "not-allowed" : "pointer",
-                        opacity: isUsed && !isCurrent ? 0.25 : 1,
-                        fontSize: 12,
-                        fontWeight: "bold",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        transition: "all 0.1s ease",
-                      }}
-                    >
-                      <span>{rank}</span>
-                      <span style={{ fontSize: 10, marginTop: -2, color: isUsed && !isCurrent ? "#475569" : suit.color }}>
-                        {suit.symbol}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+// src/App.jsx
+// Main application component for Pineapple OFC Poker scorer
+// Refactored into clean modules while preserving 100% of original functionality
+
+import React, { useState, useEffect, useRef, useCallback } from "react";
+
+// Constants
+import { BACKGROUND_COLOR, BACKGROUND_IMAGE_URL } from "./constants/pokerConstants";
+
+// Utils
+import {
+  isFouled,
+  getTotalRoyalties,
+  qualifiesFL,
+  calcPoints,
+  isBoardFilled,
+} from "./utils/pokerLogic";
+import { loadData, saveData } from "./utils/storage";
+
+// Services
+import { recognizeAllBoards, normalizeCard } from "./services/geminiService";
+
+// Components
+import Nav from "./components/Nav";
+import BoardEditor from "./components/BoardEditor";
+import CardSelectorModal from "./components/CardSelectorModal";
+import InAppCamera from "./components/InAppCamera";
+import ImageBlackoutEditor from "./components/ImageBlackoutEditor";
 
 export default function App() {
   const [view, setView] = useState("home");
@@ -1627,9 +43,11 @@ export default function App() {
   const [blackoutState, setBlackoutState] = useState(null);
   const [cameraState, setCameraState] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
-  const [activeCardEdit, setActiveCardEdit] = useState(null); 
+  const [activeCardEdit, setActiveCardEdit] = useState(null);
+
   const galleryRefs = useRef({});
 
+  // Load persisted data on mount
   useEffect(() => {
     const { players: p, sessions: s } = loadData();
     setPlayers(p);
@@ -1649,6 +67,7 @@ export default function App() {
     bottom: ["", "", "", "", ""],
   });
 
+  // Player management
   const addPlayer = () => {
     if (!newPlayerName.trim()) return;
     persist(
@@ -1660,6 +79,7 @@ export default function App() {
     );
     setNewPlayerName("");
   };
+
   const removePlayer = (id) => {
     persist(
       players.filter((p) => p.id !== id),
@@ -1667,6 +87,7 @@ export default function App() {
     );
   };
 
+  // Start a new round
   const startRound = () => {
     if (activePlayers.length < 2) return;
     setBoards(activePlayers.map(() => emptyBoard()));
@@ -1686,8 +107,10 @@ export default function App() {
     });
   };
 
+  // Long-press camera context menu
   const pressTimer = useRef(null);
   const wasLongPress = useRef(false);
+
   const handleCameraPress = (e, bi) => {
     wasLongPress.current = false;
     pressTimer.current = setTimeout(() => {
@@ -1701,6 +124,7 @@ export default function App() {
       });
     }, 500);
   };
+
   const handleCameraRelease = () => {
     if (pressTimer.current) {
       clearTimeout(pressTimer.current);
@@ -1709,6 +133,7 @@ export default function App() {
   };
 
   const openInAppCamera = (bi) => setCameraState({ boardIndex: bi });
+
   const openGallery = (bi) => {
     if (galleryRefs.current[bi]) galleryRefs.current[bi].click();
   };
@@ -1728,12 +153,14 @@ export default function App() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     e.target.value = null;
+
     const dataUrl = await new Promise((res, rej) => {
       const r = new FileReader();
       r.onload = () => res(r.result);
       r.onerror = rej;
       r.readAsDataURL(file);
     });
+
     setBlackoutState({
       boardIndex: bi,
       src: dataUrl,
@@ -1742,14 +169,15 @@ export default function App() {
     });
   };
 
-  const handleBlackoutConfirm = (b64, strokes, bi, mime, origSrc) => {
+  const handleBlackoutConfirm = (b64, strokes) => {
+    const bi = blackoutState.boardIndex;
     setCapturedImages((p) => ({
       ...p,
       [bi]: {
         base64: b64,
-        mimeType: mime,
-        previewUrl: `data:${mime};base64,${b64}`,
-        originalSrc: origSrc,
+        mimeType: blackoutState.mimeType,
+        previewUrl: `data:${blackoutState.mimeType};base64,${b64}`,
+        originalSrc: blackoutState.src,
         strokes,
       },
     }));
@@ -1768,6 +196,7 @@ export default function App() {
       return n;
     });
 
+  // Auto-advance card input
   const getNextSlot = (rowKey, slotIndex) => {
     if (rowKey === "top") {
       if (slotIndex < 2) return { rowKey: "top", slotIndex: slotIndex + 1 };
@@ -1834,11 +263,15 @@ export default function App() {
     }
   };
 
-  // Ein Board ist bereit, wenn es gescannt (img), manuell gefüllt oder als gefoult markiert wurde
+  // Ready check
   const allReady =
     activePlayers.length > 0 &&
-    activePlayers.every((_, bi) => capturedImages[bi] || forcedFouls[bi] || isBoardFilled(boards[bi]));
+    activePlayers.every(
+      (_, bi) =>
+        capturedImages[bi] || forcedFouls[bi] || isBoardFilled(boards[bi])
+    );
 
+  // Main evaluation (with optional AI card recognition)
   const handleEvaluate = async () => {
     if (!allReady) return;
     setIsScanning(true);
@@ -1862,8 +295,7 @@ export default function App() {
       let riIdx = 0;
       const newBoards = boards.map((b, bi) => {
         if (forcedFouls[bi]) return b;
-        
-        // Wenn ein Bild hochgeladen wurde, die Erkennung der KI verwenden
+
         if (capturedImages[bi]) {
           const r = recognized[riIdx++];
           if (!r) return b;
@@ -1885,9 +317,9 @@ export default function App() {
               .slice(0, 5),
           };
         }
-        // Ansonsten manuell eingetragene Karten unverändert lassen
         return b;
       });
+
       setBoards(newBoards);
 
       const foulsArr = activePlayers.map((_, bi) => !!forcedFouls[bi]);
@@ -1915,6 +347,7 @@ export default function App() {
       royalties: result.royalties,
       fouled: result.fouled,
     };
+
     persist(
       players.map((p, idx) => {
         const pi = activePlayers.indexOf(idx);
@@ -1927,6 +360,7 @@ export default function App() {
       }),
       [ns, ...sessions]
     );
+
     setResult(null);
     setView("home");
   };
@@ -1935,7 +369,7 @@ export default function App() {
     setResult(null);
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div
         style={{
@@ -1950,45 +384,7 @@ export default function App() {
         Lade…
       </div>
     );
-
-  const Nav = () => (
-    <div
-      style={{
-        display: "flex",
-        gap: 8,
-        marginBottom: 20,
-        borderBottom: "0.5px solid rgba(255, 255, 255, 0.2)",
-        paddingBottom: 12,
-      }}
-    >
-      {[
-        ["home", "ti-home", "Home"],
-        ["history", "ti-history", "Verlauf"],
-        ["players", "ti-users", "Spieler"],
-      ].map(([v, icon, label]) => (
-        <button
-          key={v}
-          onClick={() => setView(v)}
-          style={{
-            padding: "8px 16px",
-            borderRadius: 8,
-            border: view === v ? "none" : "1px solid rgba(255, 255, 255, 0.3)",
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: view === v ? 600 : 400,
-            background: view === v ? "#ffffff" : "transparent",
-            color: view === v ? BACKGROUND_COLOR : "#ffffff",
-          }}
-        >
-          <i
-            className={"ti " + icon}
-            style={{ marginRight: 6, fontSize: 14, verticalAlign: "-2px" }}
-          />
-          {label}
-        </button>
-      ))}
-    </div>
-  );
+  }
 
   const appBgStyle = BACKGROUND_IMAGE_URL
     ? {
@@ -2012,6 +408,7 @@ export default function App() {
         fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
       }}
     >
+      {/* HOME VIEW */}
       {view === "home" && (
         <div
           style={{
@@ -2023,7 +420,8 @@ export default function App() {
             position: "relative",
           }}
         >
-          <Nav />
+          <Nav view={view} setView={setView} />
+
           <div
             style={{
               display: "flex",
@@ -2032,10 +430,7 @@ export default function App() {
               marginBottom: 24,
             }}
           >
-            <i
-              className="ti ti-cards"
-              style={{ fontSize: 28, color: "#ffffff" }}
-            />
+            <i className="ti ti-cards" style={{ fontSize: 28, color: "#ffffff" }} />
             <div>
               <div style={{ fontSize: 20, fontWeight: 500 }}>Pineapple OFC</div>
               <div style={{ fontSize: 13, color: "rgba(255, 255, 255, 0.7)" }}>
@@ -2090,9 +485,7 @@ export default function App() {
                     transition: "all 0.15s",
                   }}
                 >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 12 }}
-                  >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div
                       style={{
                         width: 40,
@@ -2110,13 +503,7 @@ export default function App() {
                       {p.name.slice(0, 2).toUpperCase()}
                     </div>
                     <div>
-                      <div
-                        style={{
-                          fontWeight: 500,
-                          fontSize: 15,
-                          color: "#ffffff",
-                        }}
-                      >
+                      <div style={{ fontWeight: 500, fontSize: 15, color: "#ffffff" }}>
                         {p.name}
                       </div>
                       <div
@@ -2137,9 +524,7 @@ export default function App() {
                       height: 24,
                       borderRadius: "50%",
                       border: "2px solid",
-                      borderColor: active
-                        ? "#ffffff"
-                        : "rgba(255, 255, 255, 0.4)",
+                      borderColor: active ? "#ffffff" : "rgba(255, 255, 255, 0.4)",
                       background: active ? "#ffffff" : "transparent",
                       display: "flex",
                       alignItems: "center",
@@ -2165,6 +550,7 @@ export default function App() {
             })}
           </div>
 
+          {/* Bottom bar */}
           <div
             style={{
               position: "fixed",
@@ -2214,10 +600,20 @@ export default function App() {
                   border: "none",
                   fontWeight: 600,
                   fontSize: 16,
-                  cursor: activePlayers.length >= 2 ? "pointer" : "not-allowed",
-                  background: activePlayers.length >= 2 ? "#ffffff" : "rgba(255, 255, 255, 0.15)",
-                  color: activePlayers.length >= 2 ? BACKGROUND_COLOR : "rgba(255, 255, 255, 0.4)",
-                  boxShadow: activePlayers.length >= 2 ? "0 4px 12px rgba(0,0,0,0.2)" : "none",
+                  cursor:
+                    activePlayers.length >= 2 ? "pointer" : "not-allowed",
+                  background:
+                    activePlayers.length >= 2
+                      ? "#ffffff"
+                      : "rgba(255, 255, 255, 0.15)",
+                  color:
+                    activePlayers.length >= 2
+                      ? BACKGROUND_COLOR
+                      : "rgba(255, 255, 255, 0.4)",
+                  boxShadow:
+                    activePlayers.length >= 2
+                      ? "0 4px 12px rgba(0,0,0,0.2)"
+                      : "none",
                 }}
               >
                 {"Runde starten (" + activePlayers.length + " Spieler)"}
@@ -2227,6 +623,7 @@ export default function App() {
         </div>
       )}
 
+      {/* ROUND VIEW */}
       {view === "round" && (
         <div
           style={{
@@ -2259,10 +656,19 @@ export default function App() {
               const fouled = boards[bi] ? isFouled(boards[bi]) : false;
               const royalty =
                 boards[bi] && !fouled ? getTotalRoyalties(boards[bi]) : 0;
-              const fl = boards[bi] && !fouled ? qualifiesFL(boards[bi]) : false;
-              
+              const fl =
+                boards[bi] && !fouled ? qualifiesFL(boards[bi]) : false;
+
               return (
-                <div key={pi} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12 }}>
+                <div
+                  key={pi}
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
+                    marginBottom: 12,
+                  }}
+                >
                   {bi === 0 ? (
                     <button
                       onClick={() => setView("home")}
@@ -2282,8 +688,15 @@ export default function App() {
                         marginTop: 6,
                       }}
                     >
-                      {/* Robustes Pfeilsymbol, das systemunabhängig immer lädt */}
-                      <span style={{ fontSize: 20, fontWeight: "bold", lineHeight: 1, display: "inline-block", transform: "translateY(-1px)" }}>
+                      <span
+                        style={{
+                          fontSize: 20,
+                          fontWeight: "bold",
+                          lineHeight: 1,
+                          display: "inline-block",
+                          transform: "translateY(-1px)",
+                        }}
+                      >
                         ←
                       </span>
                     </button>
@@ -2294,9 +707,6 @@ export default function App() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <BoardEditor
                       board={boards[bi] || emptyBoard()}
-                      onChange={(nb) =>
-                        setBoards((bs) => bs.map((b, i) => (i === bi ? nb : b)))
-                      }
                       label={(p && p.name) || "Spieler " + (bi + 1)}
                       fouled={fouled}
                       royalty={royalty}
@@ -2314,6 +724,7 @@ export default function App() {
             })}
           </div>
 
+          {/* Card Selector Modal */}
           {activeCardEdit && (
             <CardSelectorModal
               activeSlot={activeCardEdit}
@@ -2326,6 +737,7 @@ export default function App() {
             />
           )}
 
+          {/* Bottom action bar */}
           <div
             style={{
               position: "fixed",
@@ -2387,24 +799,12 @@ export default function App() {
                             {d}
                           </div>
                           {result.fouled[i] && (
-                            <div
-                              style={{
-                                fontSize: 10,
-                                color: "#e74c3c",
-                                marginTop: 1,
-                              }}
-                            >
+                            <div style={{ fontSize: 10, color: "#e74c3c", marginTop: 1 }}>
                               Fouled
                             </div>
                           )}
                           {result.fl && result.fl[i] && (
-                            <div
-                              style={{
-                                fontSize: 10,
-                                color: "#f1c40f",
-                                marginTop: 1,
-                              }}
-                            >
+                            <div style={{ fontSize: 10, color: "#f1c40f", marginTop: 1 }}>
                               Fantasyland!
                             </div>
                           )}
@@ -2652,9 +1052,10 @@ export default function App() {
         </div>
       )}
 
+      {/* HISTORY VIEW */}
       {view === "history" && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "1rem 16px" }}>
-          <Nav />
+          <Nav view={view} setView={setView} />
           <h3 style={{ fontWeight: 500, fontSize: 16, marginBottom: 16, color: "#ffffff" }}>
             Spielverlauf
           </h3>
@@ -2726,9 +1127,10 @@ export default function App() {
         </div>
       )}
 
+      {/* PLAYERS VIEW */}
       {view === "players" && (
         <div style={{ maxWidth: 680, margin: "0 auto", padding: "1rem 16px" }}>
-          <Nav />
+          <Nav view={view} setView={setView} />
           <h3 style={{ fontWeight: 500, fontSize: 16, marginBottom: 16, color: "#ffffff" }}>
             Spielerverwaltung
           </h3>
@@ -2795,9 +1197,7 @@ export default function App() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 500, color: "#ffffff" }}>{p.name}</div>
-                <div
-                  style={{ fontSize: 12, color: "rgba(255, 255, 255, 0.7)" }}
-                >
+                <div style={{ fontSize: 12, color: "rgba(255, 255, 255, 0.7)" }}>
                   {p.games || 0} Spiele · Gesamt: {p.score > 0 ? "+" : ""}
                   {p.score || 0}
                 </div>
@@ -2817,6 +1217,31 @@ export default function App() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Overlays */}
+      {cameraState && (
+        <InAppCamera
+          onCapture={handleCameraCapture}
+          onCancel={() => setCameraState(null)}
+          onSelectFile={() => {
+            // Trigger hidden file input if needed
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = "image/*";
+            input.onchange = (e) => handleFileSelected(e, cameraState.boardIndex);
+            input.click();
+          }}
+        />
+      )}
+
+      {blackoutState && (
+        <ImageBlackoutEditor
+          src={blackoutState.src}
+          initialStrokes={blackoutState.initialStrokes}
+          onConfirm={(b64, strokes) => handleBlackoutConfirm(b64, strokes)}
+          onCancel={() => setBlackoutState(null)}
+        />
       )}
     </div>
   );
