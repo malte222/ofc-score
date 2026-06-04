@@ -1108,13 +1108,20 @@ function ImageBlackoutEditor({
   );
 }
 
-// ─── CardSlot (Poker Card-Layout: Wert oben-links, Farbe unten-rechts) ─────────────
-function CardSlot({ value, onClick }) {
+// ─── CardSlot (80% kompakter, Wert zentriert über Symbol, Ränder erzwungen, Orange-Hervorhebung) ───
+function CardSlot({ value, isActive, onClick }) {
   const suitColor = (v) => {
     if (!v) return "var(--color-text-tertiary)";
     const s = v.slice(-1);
     return s === "♥" || s === "♦" ? "#c0392b" : "var(--color-text-primary)";
   };
+
+  // Rahmen-Styling: Orange bei aktivem Cursor, sonst Standard-Rand
+  const borderStyle = isActive
+    ? "2px solid #f39c12" // Kräftiges Orange für den aktiven Cursor
+    : value
+    ? "1px solid var(--color-border-secondary)" // Durchgezogen für belegte Karten
+    : "1.5px dashed var(--color-border-tertiary)"; // Gestrichelt für leere Slots
 
   return (
     <div
@@ -1122,19 +1129,20 @@ function CardSlot({ value, onClick }) {
       title="Klicken zum Auswählen"
       style={{
         position: "relative",
-        width: 44,
-        height: 62,
+        width: 36, // Auf exakt 80% verkleinert
+        height: 50, // Auf exakt 80% verkleinert
         borderRadius: 6,
-        border: value
-          ? "1px solid var(--color-border-secondary)"
-          : "1.5px dashed var(--color-border-tertiary)",
-        background: value
+        border: borderStyle,
+        background: isActive
+          ? "rgba(243, 156, 18, 0.15)" // Dezenter orangefarbener Hintergrund bei aktivem Cursor
+          : value
           ? "var(--color-background-primary)"
           : "var(--color-background-secondary)",
         display: "flex",
         flexDirection: "column",
-        justifyContent: "space-between",
-        padding: "4px 6px",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 1,
         boxSizing: "border-box",
         cursor: "pointer",
         color: suitColor(value),
@@ -1143,21 +1151,23 @@ function CardSlot({ value, onClick }) {
     >
       {value ? (
         <>
+          {/* Wert mittig zentriert oben */}
           <span
             style={{
-              fontWeight: 600,
-              fontSize: 13,
-              alignSelf: "flex-start",
-              lineHeight: 1,
+              fontWeight: 700,
+              fontSize: 12,
+              lineHeight: 1.1,
+              textAlign: "center",
             }}
           >
             {value.slice(0, -1)}
           </span>
+          {/* Symbol mittig zentriert darunter */}
           <span
             style={{
-              fontSize: 16,
-              alignSelf: "flex-end",
-              lineHeight: 1,
+              fontSize: 14,
+              lineHeight: 1.1,
+              textAlign: "center",
             }}
           >
             {value.slice(-1)}
@@ -1167,7 +1177,7 @@ function CardSlot({ value, onClick }) {
         <span
           style={{
             color: "var(--color-text-tertiary)",
-            fontSize: 18,
+            fontSize: 16,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -1182,7 +1192,7 @@ function CardSlot({ value, onClick }) {
   );
 }
 
-// ─── BoardEditor ─────────────────────────────────────────────────────────────
+// ─── BoardEditor (Kompaktes Design, Zeilenbeschriftungen im Fluss) ───────────────
 function BoardEditor({
   board,
   onChange,
@@ -1191,6 +1201,8 @@ function BoardEditor({
   royalty,
   fl,
   isForcedFoul,
+  playerIndex,
+  activeCardEdit,
   onSelectSlot,
 }) {
   const rowDef = [
@@ -1211,8 +1223,8 @@ function BoardEditor({
           background: "var(--color-background-primary)",
           border: "1.5px solid var(--color-border-danger)",
           borderRadius: 12,
-          padding: "1rem 1.25rem",
-          marginBottom: 12,
+          padding: "0.75rem 1rem",
+          marginBottom: 10,
         }}
       >
         <div
@@ -1222,13 +1234,13 @@ function BoardEditor({
             justifyContent: "space-between",
           }}
         >
-          <span style={{ fontWeight: 500, fontSize: 15 }}>{label}</span>
+          <span style={{ fontWeight: 500, fontSize: 14 }}>{label}</span>
           <span
             style={{
               background: "var(--color-background-danger)",
               color: "var(--color-text-danger)",
-              fontSize: 12,
-              padding: "3px 10px",
+              fontSize: 11,
+              padding: "2px 8px",
               borderRadius: 8,
               fontWeight: 500,
             }}
@@ -1236,16 +1248,6 @@ function BoardEditor({
             Foul
           </span>
         </div>
-        <p
-          style={{
-            fontSize: 12,
-            color: "var(--color-text-secondary)",
-            marginTop: 8,
-            marginBottom: 0,
-          }}
-        >
-          Karten werden nicht gewertet.
-        </p>
       </div>
     );
 
@@ -1257,28 +1259,29 @@ function BoardEditor({
           ? "1.5px solid var(--color-border-danger)"
           : "0.5px solid var(--color-border-tertiary)",
         borderRadius: 12,
-        padding: "1rem 1.25rem",
-        marginBottom: 12,
+        padding: "0.75rem 1rem",
+        marginBottom: 10,
       }}
     >
+      {/* Spieler Name & Badges */}
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: 12,
+          marginBottom: 8,
         }}
       >
-        <span style={{ fontWeight: 500, fontSize: 15 }}>{label}</span>
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <span style={{ fontWeight: 600, fontSize: 14 }}>{label}</span>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {fl && (
             <span
               style={{
                 background: "var(--color-background-success)",
                 color: "var(--color-text-success)",
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 8,
+                fontSize: 10,
+                padding: "1px 6px",
+                borderRadius: 6,
               }}
             >
               Fantasyland
@@ -1289,9 +1292,9 @@ function BoardEditor({
               style={{
                 background: "var(--color-background-danger)",
                 color: "var(--color-text-danger)",
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 8,
+                fontSize: 10,
+                padding: "1px 6px",
+                borderRadius: 6,
               }}
             >
               Fouled
@@ -1302,44 +1305,64 @@ function BoardEditor({
               style={{
                 background: "var(--color-background-warning)",
                 color: "var(--color-text-warning)",
-                fontSize: 11,
-                padding: "2px 8px",
-                borderRadius: 8,
+                fontSize: 10,
+                padding: "1px 6px",
+                borderRadius: 6,
               }}
             >
-              +{royalty} Royalty
+              +{royalty} Roy
             </span>
           )}
         </div>
       </div>
+
+      {/* Die Reihen eng aneinander liegend ohne fette Zeilenbeschriftungen */}
       {rowDef.map(({ key, label: rLabel, count }) => (
-        <div key={key} style={{ marginBottom: 10 }}>
-          <div
+        <div
+          key={key}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 6,
+          }}
+        >
+          {/* Karten Slots */}
+          <div style={{ display: "flex", gap: 5 }}>
+            {Array.from({ length: count }).map((_, i) => {
+              // Prüfen ob dieser konkrete Slot gerade den aktiven Cursor hält
+              const isCurrent =
+                activeCardEdit &&
+                activeCardEdit.playerIndex === playerIndex &&
+                activeCardEdit.rowKey === key &&
+                activeCardEdit.slotIndex === i;
+
+              return (
+                <CardSlot
+                  key={i}
+                  value={board[key][i] || ""}
+                  isActive={isCurrent}
+                  onClick={() => onSelectSlot(key, i)}
+                />
+              );
+            })}
+          </div>
+
+          {/* Hand Name rechts neben der Reihe */}
+          <span
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: 4,
+              fontSize: 11,
+              color: "var(--color-text-tertiary)",
+              maxWidth: 90,
+              textAlign: "right",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              paddingLeft: 8,
             }}
           >
-            <span
-              style={{ fontSize: 12, color: "var(--color-text-secondary)" }}
-            >
-              {rLabel}
-            </span>
-            <span style={{ fontSize: 11, color: "var(--color-text-tertiary)" }}>
-              {getHandName(key, count)}
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {Array.from({ length: count }).map((_, i) => (
-              <CardSlot
-                key={i}
-                value={board[key][i] || ""}
-                onClick={() => onSelectSlot(key, i)}
-              />
-            ))}
-          </div>
+            {getHandName(key, count)}
+          </span>
         </div>
       ))}
     </div>
@@ -1411,7 +1434,7 @@ function ContextMenu({ x, y, onCamera, onGallery, onClose }) {
   );
 }
 
-// ─── Custom Card Selector Modal (Blickdichtes 52-Karten Matrix-Overlay) ─────────
+// ─── Custom Card Selector Modal (Teiltransparent, Boards bleiben im Hintergrund sichtbar) ───
 function CardSelectorModal({
   activeSlot,
   boards,
@@ -1455,7 +1478,7 @@ function CardSelectorModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(15, 23, 42, 0.98)", // 100% blickdichter Dark Slate Hintergrund
+        background: "rgba(15, 23, 42, 0.65)", // Teiltransparenter Hintergrund (Boards schimmern durch!)
         zIndex: 400,
         display: "flex",
         flexDirection: "column",
@@ -1481,7 +1504,13 @@ function CardSelectorModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <div>
             <div style={{ fontSize: 16, fontWeight: 600, color: "#fff" }}>
               {playerName}
@@ -1533,13 +1562,43 @@ function CardSelectorModal({
         </div>
 
         {/* Matrix: 4x13 Grid */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, overflowX: "auto" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            overflowX: "auto",
+          }}
+        >
           {suits.map((suit) => (
-            <div key={suit.key} style={{ display: "flex", gap: 3, alignItems: "center", minWidth: 340 }}>
-              <span style={{ fontSize: 18, color: suit.color, minWidth: 20, textAlign: "center", fontWeight: "bold" }}>
+            <div
+              key={suit.key}
+              style={{
+                display: "flex",
+                gap: 3,
+                alignItems: "center",
+                minWidth: 340,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 18,
+                  color: suit.color,
+                  minWidth: 20,
+                  textAlign: "center",
+                  fontWeight: "bold",
+                }}
+              >
                 {suit.symbol}
               </span>
-              <div style={{ display: "flex", gap: 3, flex: 1, justifyContent: "space-between" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 3,
+                  flex: 1,
+                  justifyContent: "space-between",
+                }}
+              >
                 {ranks.map((rank) => {
                   const cardString = rank + suit.symbol;
                   const isUsed = usedCards.has(cardString);
@@ -1559,8 +1618,14 @@ function CardSelectorModal({
                         minWidth: 23,
                         padding: 0,
                         borderRadius: 4,
-                        border: isCurrent ? "2px solid #3498db" : "0.5px solid #475569",
-                        background: isCurrent ? "#1e3a8a" : isUsed ? "#334155" : "#ffffff",
+                        border: isCurrent
+                          ? "2px solid #3498db"
+                          : "0.5px solid #475569",
+                        background: isCurrent
+                          ? "#1e3a8a"
+                          : isUsed
+                          ? "#334155"
+                          : "#ffffff",
                         color: isCurrent
                           ? "#fff"
                           : isUsed
@@ -1568,7 +1633,8 @@ function CardSelectorModal({
                           : suit.color === "#2c3e50"
                           ? "#0f172a"
                           : suit.color,
-                        cursor: isUsed && !isCurrent ? "not-allowed" : "pointer",
+                        cursor:
+                          isUsed && !isCurrent ? "not-allowed" : "pointer",
                         opacity: isUsed && !isCurrent ? 0.25 : 1,
                         fontSize: 12,
                         fontWeight: "bold",
@@ -1580,7 +1646,9 @@ function CardSelectorModal({
                       }}
                     >
                       <span>{rank}</span>
-                      <span style={{ fontSize: 10, marginTop: -2 }}>{suit.symbol}</span>
+                      <span style={{ fontSize: 10, marginTop: -2 }}>
+                        {suit.symbol}
+                      </span>
                     </button>
                   );
                 })}
@@ -2185,9 +2253,7 @@ export default function App() {
                     : "var(--color-text-tertiary)",
               }}
             >
-              {activePlayers.length >= 2
-                ? "Runde starten (" + activePlayers.length + " Spieler)"
-                : "Mindestens 2 Spieler wählen"}
+              {"Runde starten (" + activePlayers.length + " Spieler)"}
             </button>
           </div>
         </div>
@@ -2253,7 +2319,13 @@ export default function App() {
 
         <div style={{ padding: "1rem 0" }}>
           {/* Ergonomischer Top-Header ohne Text, nur mit linksbündigem Zurück-Pfeil */}
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
             <button
               onClick={() => setView("home")}
               style={{
@@ -2307,6 +2379,8 @@ export default function App() {
                 royalty={royalty}
                 fl={fl}
                 isForcedFoul={!!forcedFouls[bi]}
+                playerIndex={bi}
+                activeCardEdit={activeCardEdit}
                 onSelectSlot={(rowKey, slotIndex) =>
                   setActiveCardEdit({ playerIndex: bi, rowKey, slotIndex })
                 }
@@ -2549,10 +2623,16 @@ export default function App() {
 
                         {/* Kamera Button: Wird bei Foul unklickbar & ausgegraut */}
                         <button
-                          onMouseDown={foul ? null : (e) => handleCameraPress(e, bi)}
+                          onMouseDown={
+                            foul ? null : (e) => handleCameraPress(e, bi)
+                          }
                           onMouseUp={foul ? null : () => handleCameraRelease()}
-                          onMouseLeave={foul ? null : () => handleCameraRelease()}
-                          onTouchStart={foul ? null : (e) => handleCameraPress(e, bi)}
+                          onMouseLeave={
+                            foul ? null : () => handleCameraRelease()
+                          }
+                          onTouchStart={
+                            foul ? null : (e) => handleCameraPress(e, bi)
+                          }
                           onTouchEnd={foul ? null : () => handleCameraRelease()}
                           onClick={() => {
                             if (foul) return;
@@ -2595,7 +2675,9 @@ export default function App() {
                             padding: "7px 0",
                             borderRadius: 8,
                             border: "none",
-                            background: foul ? "#e74c3c" : "rgba(255,255,255,0.12)",
+                            background: foul
+                              ? "#e74c3c"
+                              : "rgba(255,255,255,0.12)",
                             color: foul ? "#fff" : "rgba(255,255,255,0.7)",
                             fontWeight: foul ? 600 : 400,
                             fontSize: 13,
