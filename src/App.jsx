@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+const BACKGROUND_COLOR = "#134e2a"; // Klassisches Poker-Grün
+const BACKGROUND_IMAGE_URL = "";    // Optional: z. B. "https://domain.de/felt.jpg"
+
 const RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "T", "J", "Q", "K", "A"];
 const RANK_VAL = Object.fromEntries(RANKS.map((r, i) => [r, i + 2]));
 const BOTTOM_ROYALTIES = {
@@ -63,7 +65,6 @@ const FL_TOP_QUALIFIERS = [
   "AAA",
 ];
 
-// ─── Hand Evaluator ───────────────────────────────────────────────────────────
 function parseCard(str) {
   if (!str || str.length < 2) return null;
   const rank = str.slice(0, -1);
@@ -308,7 +309,16 @@ function calcPoints(boards, forcedFouls) {
   return { delta, royalties, fouled };
 }
 
-// ─── Gemini API ───────────────────────────────────────────────────────────────
+// ─── Helper to check if a Board is fully manually entered ───────────────────
+function isBoardFilled(board) {
+  if (!board) return false;
+  return (
+    board.top && board.top.every(Boolean) &&
+    board.middle && board.middle.every(Boolean) &&
+    board.bottom && board.bottom.every(Boolean)
+  );
+}
+
 function getApiKey() {
   let key = localStorage.getItem("gemini_api_key");
   if (!key) {
@@ -387,8 +397,7 @@ function saveData(p, s) {
   } catch (e) {}
 }
 
-// ─── In-App Camera (Universal Digital Zoom + Torch + Absolute 1:1 Crop) ───────
-function InAppCamera({ onCapture, onCancel }) {
+function InAppCamera({ onCapture, onCancel, onSelectFile }) {
   const videoRef = useRef();
   const streamRef = useRef();
   const containerRef = useRef();
@@ -465,7 +474,7 @@ function InAppCamera({ onCapture, onCancel }) {
       }
     } catch (err) {
       if (err.name !== "AbortError" && err.name !== "DOMException") {
-        setError("Kamera-Zugriff verweigert. Bitte Berechtigung erteilen.");
+        setError("Kamera-Zugriff verweigert. In Sandboxed Previews (StackBlitz) nutzen Sie bitte die Foto-Auswahl.");
       }
     }
   }, []);
@@ -599,25 +608,44 @@ function InAppCamera({ onCapture, onCancel }) {
             color: "#fff",
             padding: "2rem",
             textAlign: "center",
-            gap: 16,
+            gap: 20,
           }}
         >
           <div style={{ fontSize: 48 }}>📷</div>
-          <div style={{ fontSize: 15 }}>{error}</div>
-          <button
-            onClick={onCancel}
-            style={{
-              padding: "10px 24px",
-              borderRadius: 10,
-              border: "none",
-              background: "rgba(255,255,255,0.2)",
-              color: "#fff",
-              fontSize: 15,
-              cursor: "pointer",
-            }}
-          >
-            Abbrechen
-          </button>
+          <div style={{ fontSize: 15, maxWidth: 300, lineHeight: 1.5 }}>{error}</div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+            <button
+              onClick={onCancel}
+              style={{
+                padding: "10px 24px",
+                borderRadius: 10,
+                border: "none",
+                background: "rgba(255,255,255,0.2)",
+                color: "#fff",
+                fontSize: 15,
+                cursor: "pointer",
+              }}
+            >
+              Abbrechen
+            </button>
+            {onSelectFile && (
+              <button
+                onClick={onSelectFile}
+                style={{
+                  padding: "10px 24px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "#3498db",
+                  color: "#fff",
+                  fontSize: 15,
+                  cursor: "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                Foto hochladen / Galerie
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <>
@@ -840,7 +868,6 @@ function InAppCamera({ onCapture, onCancel }) {
   );
 }
 
-// ─── Image Blackout Editor (Perfekter Kontrast für alle Buttons) ───────────────────────
 function ImageBlackoutEditor({
   src,
   initialStrokes = [],
@@ -1108,20 +1135,22 @@ function ImageBlackoutEditor({
   );
 }
 
-// ─── CardSlot (80% kompakter, Wert zentriert über Symbol, Ränder erzwungen, Orange-Hervorhebung) ───
 function CardSlot({ value, isActive, onClick }) {
   const suitColor = (v) => {
-    if (!v) return "var(--color-text-tertiary)";
+    if (!v) return "#cbd5e1"; // Graues Plus-Symbol bei freien Slots
     const s = v.slice(-1);
-    return s === "♥" || s === "♦" ? "#c0392b" : "var(--color-text-primary)";
+    if (s === "♠") return "#000000"; // Pik: Schwarz
+    if (s === "♥") return "#e74c3c"; // Herz: Rot
+    if (s === "♦") return "#3498db"; // Karo: Blau
+    if (s === "♣") return "#b38f00"; // Kreuz: Dunkelgelb
+    return "#ffffff";
   };
 
-  // Rahmen-Styling: Orange bei aktivem Cursor, sonst Standard-Rand
   const borderStyle = isActive
     ? "2px solid #f39c12" // Kräftiges Orange für den aktiven Cursor
     : value
-    ? "1px solid var(--color-border-secondary)" // Durchgezogen für belegte Karten
-    : "1.5px dashed var(--color-border-tertiary)"; // Gestrichelt für leere Slots
+    ? "1px solid rgba(0, 0, 0, 0.15)" // Subtiler Rand für echte Karten
+    : "1.5px dashed rgba(255, 255, 255, 0.35)"; // Gestrichelt für leere Slots
 
   return (
     <div
@@ -1129,15 +1158,13 @@ function CardSlot({ value, isActive, onClick }) {
       title="Klicken zum Auswählen"
       style={{
         position: "relative",
-        width: 36, // Auf exakt 80% verkleinert
-        height: 50, // Auf exakt 80% verkleinert
+        width: 36, 
+        height: 50, 
         borderRadius: 6,
         border: borderStyle,
         background: isActive
-          ? "rgba(243, 156, 18, 0.15)" // Dezenter orangefarbener Hintergrund bei aktivem Cursor
-          : value
-          ? "var(--color-background-primary)"
-          : "var(--color-background-secondary)",
+          ? "rgba(243, 156, 18, 0.25)" 
+          : "#ffffff", // IMMER reines, deckendes Weiß als Hintergrund
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -1147,11 +1174,11 @@ function CardSlot({ value, isActive, onClick }) {
         cursor: "pointer",
         color: suitColor(value),
         transition: "all 0.1s ease",
+        boxShadow: value ? "0 2px 4px rgba(0,0,0,0.15)" : "none",
       }}
     >
       {value ? (
         <>
-          {/* Wert mittig zentriert oben */}
           <span
             style={{
               fontWeight: 700,
@@ -1162,7 +1189,6 @@ function CardSlot({ value, isActive, onClick }) {
           >
             {value.slice(0, -1)}
           </span>
-          {/* Symbol mittig zentriert darunter */}
           <span
             style={{
               fontSize: 14,
@@ -1176,13 +1202,14 @@ function CardSlot({ value, isActive, onClick }) {
       ) : (
         <span
           style={{
-            color: "var(--color-text-tertiary)",
+            color: "rgba(0, 0, 0, 0.25)",
             fontSize: 16,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             height: "100%",
             width: "100%",
+            fontWeight: "bold"
           }}
         >
           +
@@ -1192,7 +1219,6 @@ function CardSlot({ value, isActive, onClick }) {
   );
 }
 
-// ─── BoardEditor (Kompaktes Design, Zeilenbeschriftungen im Fluss) ───────────────
 function BoardEditor({
   board,
   onChange,
@@ -1220,8 +1246,8 @@ function BoardEditor({
     return (
       <div
         style={{
-          background: "var(--color-background-primary)",
-          border: "1.5px solid var(--color-border-danger)",
+          background: "rgba(255, 255, 255, 0.08)",
+          border: "1.5px solid #e74c3c",
           borderRadius: 12,
           padding: "0.75rem 1rem",
           marginBottom: 10,
@@ -1234,11 +1260,11 @@ function BoardEditor({
             justifyContent: "space-between",
           }}
         >
-          <span style={{ fontWeight: 500, fontSize: 14 }}>{label}</span>
+          <span style={{ fontWeight: 500, fontSize: 14, color: "#ffffff" }}>{label}</span>
           <span
             style={{
-              background: "var(--color-background-danger)",
-              color: "var(--color-text-danger)",
+              background: "#e74c3c",
+              color: "#ffffff",
               fontSize: 11,
               padding: "2px 8px",
               borderRadius: 8,
@@ -1254,16 +1280,15 @@ function BoardEditor({
   return (
     <div
       style={{
-        background: "var(--color-background-primary)",
+        background: "rgba(255, 255, 255, 0.08)",
         border: fouled
-          ? "1.5px solid var(--color-border-danger)"
-          : "0.5px solid var(--color-border-tertiary)",
+          ? "1.5px solid #e74c3c"
+          : "0.5px solid rgba(255, 255, 255, 0.15)",
         borderRadius: 12,
         padding: "0.75rem 1rem",
         marginBottom: 10,
       }}
     >
-      {/* Spieler Name & Badges */}
       <div
         style={{
           display: "flex",
@@ -1272,13 +1297,13 @@ function BoardEditor({
           marginBottom: 8,
         }}
       >
-        <span style={{ fontWeight: 600, fontSize: 14 }}>{label}</span>
+        <span style={{ fontWeight: 600, fontSize: 14, color: "#ffffff" }}>{label}</span>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {fl && (
             <span
               style={{
-                background: "var(--color-background-success)",
-                color: "var(--color-text-success)",
+                background: "#2ecc71",
+                color: "#ffffff",
                 fontSize: 10,
                 padding: "1px 6px",
                 borderRadius: 6,
@@ -1290,8 +1315,8 @@ function BoardEditor({
           {fouled && (
             <span
               style={{
-                background: "var(--color-background-danger)",
-                color: "var(--color-text-danger)",
+                background: "#e74c3c",
+                color: "#ffffff",
                 fontSize: 10,
                 padding: "1px 6px",
                 borderRadius: 6,
@@ -1303,11 +1328,12 @@ function BoardEditor({
           {royalty > 0 && (
             <span
               style={{
-                background: "var(--color-background-warning)",
-                color: "var(--color-text-warning)",
+                background: "#f1c40f",
+                color: "#1e293b",
                 fontSize: 10,
                 padding: "1px 6px",
                 borderRadius: 6,
+                fontWeight: "bold"
               }}
             >
               +{royalty} Roy
@@ -1316,8 +1342,7 @@ function BoardEditor({
         </div>
       </div>
 
-      {/* Die Reihen eng aneinander liegend ohne fette Zeilenbeschriftungen */}
-      {rowDef.map(({ key, label: rLabel, count }) => (
+      {rowDef.map(({ key, count }) => (
         <div
           key={key}
           style={{
@@ -1327,10 +1352,8 @@ function BoardEditor({
             marginBottom: 6,
           }}
         >
-          {/* Karten Slots */}
           <div style={{ display: "flex", gap: 5 }}>
             {Array.from({ length: count }).map((_, i) => {
-              // Prüfen ob dieser konkrete Slot gerade den aktiven Cursor hält
               const isCurrent =
                 activeCardEdit &&
                 activeCardEdit.playerIndex === playerIndex &&
@@ -1348,11 +1371,10 @@ function BoardEditor({
             })}
           </div>
 
-          {/* Hand Name rechts neben der Reihe */}
           <span
             style={{
               fontSize: 11,
-              color: "var(--color-text-tertiary)",
+              color: "rgba(255, 255, 255, 0.6)",
               maxWidth: 90,
               textAlign: "right",
               overflow: "hidden",
@@ -1369,72 +1391,6 @@ function BoardEditor({
   );
 }
 
-// ─── Context Menu ─────────────────────────────────────────────────────────────
-function ContextMenu({ x, y, onCamera, onGallery, onClose }) {
-  useEffect(() => {
-    const h = () => onClose();
-    document.addEventListener("click", h, { once: true });
-    return () => document.removeEventListener("click", h);
-  }, []);
-  return (
-    <div
-      style={{
-        position: "fixed",
-        left: x,
-        top: y,
-        zIndex: 400,
-        background: "var(--color-background-primary)",
-        border: "0.5px solid var(--color-border-secondary)",
-        borderRadius: 10,
-        boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
-        minWidth: 180,
-        overflow: "hidden",
-      }}
-    >
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCamera();
-          onClose();
-        }}
-        style={{
-          display: "block",
-          width: "100%",
-          padding: "12px 16px",
-          border: "none",
-          background: "transparent",
-          textAlign: "left",
-          cursor: "pointer",
-          fontSize: 14,
-          borderBottom: "0.5px solid var(--color-border-tertiary)",
-        }}
-      >
-        📷 Foto aufnehmen
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onGallery();
-          onClose();
-        }}
-        style={{
-          display: "block",
-          width: "100%",
-          padding: "12px 16px",
-          border: "none",
-          background: "transparent",
-          textAlign: "left",
-          cursor: "pointer",
-          fontSize: 14,
-        }}
-      >
-        🖼️ Aus Galerie wählen
-      </button>
-    </div>
-  );
-}
-
-// ─── Custom Card Selector Modal (Teiltransparent, Boards bleiben im Hintergrund sichtbar) ───
 function CardSelectorModal({
   activeSlot,
   boards,
@@ -1449,7 +1405,6 @@ function CardSelectorModal({
   const player = players[activePlayers[playerIndex]];
   const playerName = player ? player.name : "Spieler " + (playerIndex + 1);
 
-  // Vergebene Karten ermitteln
   const usedCards = new Set();
   boards.forEach((b) => {
     if (!b) return;
@@ -1463,10 +1418,10 @@ function CardSelectorModal({
   });
 
   const suits = [
-    { key: "s", symbol: "♠", color: "#2c3e50" },
-    { key: "h", symbol: "♥", color: "#c0392b" },
-    { key: "d", symbol: "♦", color: "#c0392b" },
-    { key: "c", symbol: "♣", color: "#2c3e50" },
+    { key: "s", symbol: "♠", color: "#000000" }, // Pik: Schwarz
+    { key: "h", symbol: "♥", color: "#e74c3c" }, // Herz: Rot
+    { key: "d", symbol: "♦", color: "#3498db" }, // Karo: Blau
+    { key: "c", symbol: "♣", color: "#b38f00" }, // Kreuz: Dunkelgelb
   ];
   const ranks = ["A", "K", "Q", "J", "T", "9", "8", "7", "6", "5", "4", "3", "2"];
 
@@ -1478,7 +1433,7 @@ function CardSelectorModal({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(15, 23, 42, 0.65)", // Teiltransparenter Hintergrund (Boards schimmern durch!)
+        background: "rgba(15, 23, 42, 0.65)", // Boards im Hintergrund schimmern durch
         zIndex: 400,
         display: "flex",
         flexDirection: "column",
@@ -1503,7 +1458,6 @@ function CardSelectorModal({
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div
           style={{
             display: "flex",
@@ -1520,7 +1474,6 @@ function CardSelectorModal({
             </div>
           </div>
 
-          {/* Aktionen */}
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
             <button
               onClick={onClearCard}
@@ -1556,12 +1509,11 @@ function CardSelectorModal({
                 cursor: "pointer",
               }}
             >
-              Fertig
+              Schließen
             </button>
           </div>
         </div>
 
-        {/* Matrix: 4x13 Grid */}
         <div
           style={{
             display: "flex",
@@ -1619,20 +1571,18 @@ function CardSelectorModal({
                         padding: 0,
                         borderRadius: 4,
                         border: isCurrent
-                          ? "2px solid #3498db"
+                          ? "2px solid #f39c12" 
                           : "0.5px solid #475569",
-                        background: isCurrent
-                          ? "#1e3a8a"
-                          : isUsed
-                          ? "#334155"
-                          : "#ffffff",
+                        background: isCurrent 
+                          ? "rgba(243, 156, 18, 0.35)" 
+                          : isUsed 
+                          ? "#1e293b" 
+                          : "#ffffff", // Pure white für beste Selektierbarkeit
                         color: isCurrent
-                          ? "#fff"
+                          ? "#f39c12"
                           : isUsed
-                          ? "#64748b"
-                          : suit.color === "#2c3e50"
-                          ? "#0f172a"
-                          : suit.color,
+                          ? "#475569"
+                          : "#000000", // Schwarze Ränge auf weißem Grund
                         cursor:
                           isUsed && !isCurrent ? "not-allowed" : "pointer",
                         opacity: isUsed && !isCurrent ? 0.25 : 1,
@@ -1646,7 +1596,7 @@ function CardSelectorModal({
                       }}
                     >
                       <span>{rank}</span>
-                      <span style={{ fontSize: 10, marginTop: -2 }}>
+                      <span style={{ fontSize: 10, marginTop: -2, color: isUsed && !isCurrent ? "#475569" : suit.color }}>
                         {suit.symbol}
                       </span>
                     </button>
@@ -1661,7 +1611,6 @@ function CardSelectorModal({
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [view, setView] = useState("home");
   const [players, setPlayers] = useState([]);
@@ -1678,7 +1627,7 @@ export default function App() {
   const [blackoutState, setBlackoutState] = useState(null);
   const [cameraState, setCameraState] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
-  const [activeCardEdit, setActiveCardEdit] = useState(null); // Cursor-Referenz {playerIndex, rowKey, slotIndex}
+  const [activeCardEdit, setActiveCardEdit] = useState(null); 
   const galleryRefs = useRef({});
 
   useEffect(() => {
@@ -1885,47 +1834,59 @@ export default function App() {
     }
   };
 
+  // Ein Board ist bereit, wenn es gescannt (img), manuell gefüllt oder als gefoult markiert wurde
   const allReady =
     activePlayers.length > 0 &&
-    activePlayers.every((_, bi) => capturedImages[bi] || forcedFouls[bi]);
+    activePlayers.every((_, bi) => capturedImages[bi] || forcedFouls[bi] || isBoardFilled(boards[bi]));
 
   const handleEvaluate = async () => {
     if (!allReady) return;
     setIsScanning(true);
-    setScanStatus("KI analysiert Boards…");
-    try {
-      const imageSlots = activePlayers.map((_, bi) =>
-        forcedFouls[bi] ? null : capturedImages[bi]
-      );
-      const nonFouledImages = imageSlots.filter(Boolean);
 
+    const imageSlots = activePlayers.map((_, bi) =>
+      forcedFouls[bi] ? null : capturedImages[bi]
+    );
+    const nonFouledImages = imageSlots.filter(Boolean);
+    const hasImages = nonFouledImages.length > 0;
+
+    if (hasImages) {
+      setScanStatus("KI analysiert Boards…");
+    }
+
+    try {
       let recognized = [];
-      if (nonFouledImages.length > 0) {
+      if (hasImages) {
         recognized = (await recognizeAllBoards(nonFouledImages)) || [];
       }
 
       let riIdx = 0;
       const newBoards = boards.map((b, bi) => {
         if (forcedFouls[bi]) return b;
-        const r = recognized[riIdx++];
-        if (!r) return b;
-        return {
-          top: (Array.isArray(r.top) ? r.top : [])
-            .slice(0, 3)
-            .map(normalizeCard)
-            .concat(["", "", ""])
-            .slice(0, 3),
-          middle: (Array.isArray(r.middle) ? r.middle : [])
-            .slice(0, 5)
-            .map(normalizeCard)
-            .concat(["", "", "", "", ""])
-            .slice(0, 5),
-          bottom: (Array.isArray(r.bottom) ? r.bottom : [])
-            .slice(0, 5)
-            .map(normalizeCard)
-            .concat(["", "", "", "", ""])
-            .slice(0, 5),
-        };
+        
+        // Wenn ein Bild hochgeladen wurde, die Erkennung der KI verwenden
+        if (capturedImages[bi]) {
+          const r = recognized[riIdx++];
+          if (!r) return b;
+          return {
+            top: (Array.isArray(r.top) ? r.top : [])
+              .slice(0, 3)
+              .map(normalizeCard)
+              .concat(["", "", ""])
+              .slice(0, 3),
+            middle: (Array.isArray(r.middle) ? r.middle : [])
+              .slice(0, 5)
+              .map(normalizeCard)
+              .concat(["", "", "", "", ""])
+              .slice(0, 5),
+            bottom: (Array.isArray(r.bottom) ? r.bottom : [])
+              .slice(0, 5)
+              .map(normalizeCard)
+              .concat(["", "", "", "", ""])
+              .slice(0, 5),
+          };
+        }
+        // Ansonsten manuell eingetragene Karten unverändert lassen
+        return b;
       });
       setBoards(newBoards);
 
@@ -1982,6 +1943,8 @@ export default function App() {
           alignItems: "center",
           justifyContent: "center",
           height: 300,
+          background: BACKGROUND_COLOR,
+          color: "#fff",
         }}
       >
         Lade…
@@ -1992,9 +1955,9 @@ export default function App() {
     <div
       style={{
         display: "flex",
-        gap: 4,
+        gap: 8,
         marginBottom: 20,
-        borderBottom: "0.5px solid var(--color-border-tertiary)",
+        borderBottom: "0.5px solid rgba(255, 255, 255, 0.2)",
         paddingBottom: 12,
       }}
     >
@@ -2007,18 +1970,14 @@ export default function App() {
           key={v}
           onClick={() => setView(v)}
           style={{
-            padding: "6px 14px",
+            padding: "8px 16px",
             borderRadius: 8,
-            border: "none",
+            border: view === v ? "none" : "1px solid rgba(255, 255, 255, 0.3)",
             cursor: "pointer",
             fontSize: 13,
-            fontWeight: view === v ? 500 : 400,
-            background:
-              view === v ? "var(--color-background-secondary)" : "transparent",
-            color:
-              view === v
-                ? "var(--color-text-primary)"
-                : "var(--color-text-secondary)",
+            fontWeight: view === v ? 600 : 400,
+            background: view === v ? "#ffffff" : "transparent",
+            color: view === v ? BACKGROUND_COLOR : "#ffffff",
           }}
         >
           <i
@@ -2031,870 +1990,834 @@ export default function App() {
     </div>
   );
 
-  if (view === "home")
-    return (
-      <div
-        style={{
-          maxWidth: 680,
-          margin: "0 auto",
-          padding: "1rem 0",
-          paddingBottom: 100,
-          minHeight: "100vh",
-          position: "relative",
-        }}
-      >
-        <Nav />
+  const appBgStyle = BACKGROUND_IMAGE_URL
+    ? {
+        backgroundImage: "url(" + BACKGROUND_IMAGE_URL + ")",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+      }
+    : {
+        backgroundColor: BACKGROUND_COLOR,
+      };
+
+  const BOTTOM_H = result ? 130 : 100;
+
+  return (
+    <div
+      style={{
+        ...appBgStyle,
+        color: "#ffffff",
+        minHeight: "100vh",
+        fontFamily: "-apple-system, BlinkMacSystemFont, sans-serif",
+      }}
+    >
+      {view === "home" && (
         <div
           style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            marginBottom: 24,
+            maxWidth: 680,
+            margin: "0 auto",
+            padding: "1rem 16px",
+            paddingBottom: 100,
+            minHeight: "100vh",
+            position: "relative",
           }}
         >
-          <i
-            className="ti ti-cards"
-            style={{ fontSize: 28, color: "var(--color-text-secondary)" }}
-          />
-          <div>
-            <div style={{ fontSize: 20, fontWeight: 500 }}>Pineapple OFC</div>
-            <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>
-              Spieler für die neue Runde auswählen
-            </div>
-          </div>
-        </div>
-
-        {players.length === 0 && (
-          <div
-            style={{
-              padding: "2rem",
-              textAlign: "center",
-              color: "var(--color-text-secondary)",
-              border: "1.5px dashed var(--color-border-tertiary)",
-              borderRadius: 12,
-            }}
-          >
-            Noch keine Spieler – gehe zu <strong>Spieler</strong> um welche
-            anzulegen.
-          </div>
-        )}
-
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {players.map((p, i) => {
-            const active = activePlayers.includes(i);
-            return (
-              <div
-                key={p.id}
-                onClick={() =>
-                  setActivePlayers((ap) =>
-                    active
-                      ? ap.filter((x) => x !== i)
-                      : activePlayers.length < 3
-                      ? [...ap, i]
-                      : ap
-                  )
-                }
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  border: active
-                    ? "2px solid var(--color-border-info)"
-                    : "0.5px solid var(--color-border-tertiary)",
-                  background: active
-                    ? "var(--color-background-info)"
-                    : "var(--color-background-primary)",
-                  transition: "all 0.15s",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "50%",
-                      background: active
-                        ? "var(--color-background-primary)"
-                        : "var(--color-background-secondary)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 600,
-                      fontSize: 15,
-                      color: active
-                        ? "var(--color-text-info)"
-                        : "var(--color-text-secondary)",
-                      border: active
-                        ? "1.5px solid var(--color-border-info)"
-                        : "none",
-                    }}
-                  >
-                    {p.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div>
-                    <div
-                      style={{
-                        fontWeight: 500,
-                        fontSize: 15,
-                        color: active
-                          ? "var(--color-text-info)"
-                          : "var(--color-text-primary)",
-                      }}
-                    >
-                      {p.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "var(--color-text-secondary)",
-                        marginTop: 1,
-                      }}
-                    >
-                      {p.games || 0} Spiele · {p.score > 0 ? "+" : ""}
-                      {p.score || 0} Pts
-                    </div>
-                  </div>
-                </div>
-                <div
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: "50%",
-                    border: "2px solid",
-                    borderColor: active
-                      ? "var(--color-border-info)"
-                      : "var(--color-border-tertiary)",
-                    background: active
-                      ? "var(--color-text-info)"
-                      : "transparent",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    flexShrink: 0,
-                  }}
-                >
-                  {active && (
-                    <span
-                      style={{
-                        color: "var(--color-background-primary)",
-                        fontSize: 14,
-                        lineHeight: 1,
-                      }}
-                    >
-                      ✓
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div
-          style={{
-            position: "fixed",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            padding: "12px 16px",
-            background: "var(--color-background-primary)",
-            borderTop: "0.5px solid var(--color-border-tertiary)",
-            zIndex: 50,
-          }}
-        >
-          <div style={{ maxWidth: 680, margin: "0 auto" }}>
-            {activePlayers.length >= 2 && (
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                  marginBottom: 10,
-                  flexWrap: "wrap",
-                }}
-              >
-                {activePlayers.map((i) => (
-                  <span
-                    key={i}
-                    style={{
-                      fontSize: 12,
-                      padding: "3px 10px",
-                      borderRadius: 20,
-                      background: "var(--color-background-info)",
-                      color: "var(--color-text-info)",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {players[i] ? players[i].name : ""}
-                  </span>
-                ))}
-              </div>
-            )}
-            <button
-              onClick={startRound}
-              disabled={activePlayers.length < 2}
-              style={{
-                width: "100%",
-                padding: "14px 0",
-                borderRadius: 12,
-                border: "none",
-                fontWeight: 600,
-                fontSize: 16,
-                cursor: activePlayers.length >= 2 ? "pointer" : "not-allowed",
-                background:
-                  activePlayers.length >= 2
-                    ? "var(--color-background-info)"
-                    : "var(--color-background-secondary)",
-                color:
-                  activePlayers.length >= 2
-                    ? "var(--color-text-info)"
-                    : "var(--color-text-tertiary)",
-              }}
-            >
-              {"Runde starten (" + activePlayers.length + " Spieler)"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-
-  if (view === "round") {
-    const BOTTOM_H = result ? 130 : 100;
-
-    return (
-      <div
-        style={{
-          maxWidth: 680,
-          margin: "0 auto",
-          paddingBottom: BOTTOM_H + 16,
-          minHeight: "100vh",
-        }}
-      >
-        {cameraState && (
-          <InAppCamera
-            onCapture={handleCameraCapture}
-            onCancel={() => setCameraState(null)}
-          />
-        )}
-
-        {blackoutState && (
-          <ImageBlackoutEditor
-            src={blackoutState.src}
-            initialStrokes={blackoutState.initialStrokes || []}
-            onConfirm={(b64, strokes) =>
-              handleBlackoutConfirm(
-                b64,
-                strokes,
-                blackoutState.boardIndex,
-                blackoutState.mimeType,
-                blackoutState.src
-              )
-            }
-            onCancel={() => setBlackoutState(null)}
-          />
-        )}
-
-        {contextMenu && (
-          <ContextMenu
-            x={contextMenu.x}
-            y={contextMenu.y}
-            onCamera={() => openInAppCamera(contextMenu.boardIndex)}
-            onGallery={() => openGallery(contextMenu.boardIndex)}
-            onClose={() => setContextMenu(null)}
-          />
-        )}
-
-        {activePlayers.map((_, bi) => (
-          <input
-            key={bi}
-            ref={(el) => (galleryRefs.current[bi] = el)}
-            type="file"
-            accept="image/*"
-            style={{ display: "none" }}
-            onChange={(e) => handleFileSelected(e, bi)}
-          />
-        ))}
-
-        <div style={{ padding: "1rem 0" }}>
-          {/* Ergonomischer Top-Header ohne Text, nur mit linksbündigem Zurück-Pfeil */}
+          <Nav />
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              marginBottom: 12,
+              gap: 10,
+              marginBottom: 24,
             }}
           >
-            <button
-              onClick={() => setView("home")}
-              style={{
-                background: "var(--color-background-secondary)",
-                border: "0.5px solid var(--color-border-secondary)",
-                borderRadius: "50%",
-                width: 36,
-                height: 36,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                color: "var(--color-text-primary)",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-              }}
-            >
-              <i className="ti ti-arrow-left" style={{ fontSize: 18 }} />
-            </button>
+            <i
+              className="ti ti-cards"
+              style={{ fontSize: 28, color: "#ffffff" }}
+            />
+            <div>
+              <div style={{ fontSize: 20, fontWeight: 500 }}>Pineapple OFC</div>
+              <div style={{ fontSize: 13, color: "rgba(255, 255, 255, 0.7)" }}>
+                Spieler für die neue Runde auswählen
+              </div>
+            </div>
           </div>
 
-          {scanStatus && (
+          {players.length === 0 && (
             <div
               style={{
-                padding: "8px 14px",
-                borderRadius: 8,
-                background: "var(--color-background-secondary)",
-                fontSize: 13,
-                color: "var(--color-text-secondary)",
-                marginBottom: 12,
+                padding: "2rem",
+                textAlign: "center",
+                color: "rgba(255, 255, 255, 0.7)",
+                border: "1.5px dashed rgba(255, 255, 255, 0.3)",
+                borderRadius: 12,
               }}
             >
-              {scanStatus}
+              Noch keine Spieler – gehe zu <strong>Spieler</strong> um welche
+              anzulegen.
             </div>
           )}
 
-          {activePlayers.map((pi, bi) => {
-            const p = players[pi];
-            const fouled = boards[bi] ? isFouled(boards[bi]) : false;
-            const royalty =
-              boards[bi] && !fouled ? getTotalRoyalties(boards[bi]) : 0;
-            const fl = boards[bi] && !fouled ? qualifiesFL(boards[bi]) : false;
-            return (
-              <BoardEditor
-                key={pi}
-                board={boards[bi] || emptyBoard()}
-                onChange={(nb) =>
-                  setBoards((bs) => bs.map((b, i) => (i === bi ? nb : b)))
-                }
-                label={(p && p.name) || "Spieler " + (bi + 1)}
-                fouled={fouled}
-                royalty={royalty}
-                fl={fl}
-                isForcedFoul={!!forcedFouls[bi]}
-                playerIndex={bi}
-                activeCardEdit={activeCardEdit}
-                onSelectSlot={(rowKey, slotIndex) =>
-                  setActiveCardEdit({ playerIndex: bi, rowKey, slotIndex })
-                }
-              />
-            );
-          })}
-        </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {players.map((p, i) => {
+              const active = activePlayers.includes(i);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() =>
+                    setActivePlayers((ap) =>
+                      active
+                        ? ap.filter((x) => x !== i)
+                        : activePlayers.length < 3
+                        ? [...ap, i]
+                        : ap
+                    )
+                  }
+                  style={{
+                    padding: "14px 16px",
+                    borderRadius: 12,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    border: active
+                      ? "2px solid #ffffff"
+                      : "1px solid rgba(255, 255, 255, 0.15)",
+                    background: active
+                      ? "rgba(255, 255, 255, 0.2)"
+                      : "rgba(255, 255, 255, 0.08)",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <div
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
+                  >
+                    <div
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: "50%",
+                        background: "rgba(255, 255, 255, 0.15)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontWeight: 600,
+                        fontSize: 15,
+                        color: "#ffffff",
+                      }}
+                    >
+                      {p.name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div
+                        style={{
+                          fontWeight: 500,
+                          fontSize: 15,
+                          color: "#ffffff",
+                        }}
+                      >
+                        {p.name}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(255, 255, 255, 0.7)",
+                          marginTop: 1,
+                        }}
+                      >
+                        {p.games || 0} Spiele · {p.score > 0 ? "+" : ""}
+                        {p.score || 0} Pts
+                      </div>
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: "50%",
+                      border: "2px solid",
+                      borderColor: active
+                        ? "#ffffff"
+                        : "rgba(255, 255, 255, 0.4)",
+                      background: active ? "#ffffff" : "transparent",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {active && (
+                      <span
+                        style={{
+                          color: BACKGROUND_COLOR,
+                          fontSize: 14,
+                          lineHeight: 1,
+                          fontWeight: "bold",
+                        }}
+                      >
+                        ✓
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
-        {/* Custom Card Selection Modal Overlay */}
-        {activeCardEdit && (
-          <CardSelectorModal
-            activeSlot={activeCardEdit}
-            boards={boards}
-            players={players}
-            activePlayers={activePlayers}
-            onSelectCard={handleSelectCard}
-            onClearCard={handleClearCard}
-            onClose={() => setActiveCardEdit(null)}
-          />
-        )}
-
-        <div
-          style={{
-            position: "fixed",
-            bottom: 0,
-            left: 0,
-            right: 0,
-            background: "#1a5276",
-            borderTop: "2px solid #154360",
-            zIndex: 50,
-            boxShadow: "0 -4px 20px rgba(0,0,0,0.3)",
-          }}
-        >
           <div
-            style={{ maxWidth: 680, margin: "0 auto", padding: "10px 12px" }}
+            style={{
+              position: "fixed",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              padding: "12px 16px",
+              background: "#0d3a1f",
+              borderTop: "1px solid rgba(255, 255, 255, 0.2)",
+              zIndex: 50,
+            }}
           >
-            {result ? (
-              <>
+            <div style={{ maxWidth: 680, margin: "0 auto" }}>
+              {activePlayers.length >= 2 && (
                 <div
                   style={{
                     display: "flex",
-                    gap: 8,
+                    gap: 6,
                     marginBottom: 10,
-                    justifyContent: "center",
                     flexWrap: "wrap",
                   }}
                 >
-                  {activePlayers.map((pi, i) => {
-                    const p = players[pi];
-                    const d = result.delta[i];
-                    return (
-                      <div
-                        key={pi}
-                        style={{
-                          textAlign: "center",
-                          background: "rgba(255,255,255,0.1)",
-                          borderRadius: 10,
-                          padding: "8px 14px",
-                          minWidth: 80,
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(255,255,255,0.8)",
-                            marginBottom: 2,
-                          }}
-                        >
-                          {p ? p.name : ""}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 22,
-                            fontWeight: 600,
-                            color:
-                              d > 0 ? "#2ecc71" : d < 0 ? "#e74c3c" : "#bdc3c7",
-                          }}
-                        >
-                          {d > 0 ? "+" : ""}
-                          {d}
-                        </div>
-                        {result.fouled[i] && (
-                          <div
-                            style={{
-                              fontSize: 10,
-                              color: "#e74c3c",
-                              marginTop: 1,
-                            }}
-                          >
-                            Fouled
-                          </div>
-                        )}
-                        {result.fl && result.fl[i] && (
-                          <div
-                            style={{
-                              fontSize: 10,
-                              color: "#f1c40f",
-                              marginTop: 1,
-                            }}
-                          >
-                            Fantasyland!
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {activePlayers.map((i) => (
+                    <span
+                      key={i}
+                      style={{
+                        fontSize: 12,
+                        padding: "3px 10px",
+                        borderRadius: 20,
+                        background: "rgba(255, 255, 255, 0.2)",
+                        color: "#ffffff",
+                        fontWeight: 500,
+                      }}
+                    >
+                      {players[i] ? players[i].name : ""}
+                    </span>
+                  ))}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={discardRound}
-                    style={{
-                      flex: 1,
-                      padding: "12px 0",
-                      borderRadius: 10,
-                      border: "1.5px solid rgba(255,255,255,0.3)",
-                      background: "transparent",
-                      color: "#fff",
-                      fontWeight: 500,
-                      fontSize: 14,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Verwerfen
-                  </button>
-                  <button
-                    onClick={saveRound}
-                    style={{
-                      flex: 2,
-                      padding: "12px 0",
-                      borderRadius: 10,
-                      border: "none",
-                      background: "#2ecc71",
-                      color: "#fff",
-                      fontWeight: 600,
-                      fontSize: 15,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ✓ Speichern
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 8,
-                    marginBottom: 10,
-                    justifyContent: "space-around",
-                  }}
-                >
-                  {activePlayers.map((pi, bi) => {
-                    const p = players[pi];
-                    const img = capturedImages[bi];
-                    const foul = !!forcedFouls[bi];
-                    return (
-                      <div
-                        key={bi}
-                        style={{
-                          flex: 1,
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: 6,
-                          minWidth: 0,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "rgba(255,255,255,0.8)",
-                            fontWeight: 500,
-                            textAlign: "center",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            maxWidth: "100%",
-                          }}
-                        >
-                          {(p && p.name) || "P" + (bi + 1)}
-                        </span>
+              )}
+              <button
+                onClick={startRound}
+                disabled={activePlayers.length < 2}
+                style={{
+                  width: "100%",
+                  padding: "14px 0",
+                  borderRadius: 12,
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: 16,
+                  cursor: activePlayers.length >= 2 ? "pointer" : "not-allowed",
+                  background: activePlayers.length >= 2 ? "#ffffff" : "rgba(255, 255, 255, 0.15)",
+                  color: activePlayers.length >= 2 ? BACKGROUND_COLOR : "rgba(255, 255, 255, 0.4)",
+                  boxShadow: activePlayers.length >= 2 ? "0 4px 12px rgba(0,0,0,0.2)" : "none",
+                }}
+              >
+                {"Runde starten (" + activePlayers.length + " Spieler)"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-                        {img && !foul && (
+      {view === "round" && (
+        <div
+          style={{
+            maxWidth: 680,
+            margin: "0 auto",
+            padding: "1rem 16px",
+            paddingBottom: BOTTOM_H + 16,
+            minHeight: "100vh",
+          }}
+        >
+          <div style={{ padding: "0.5rem 0" }}>
+            {scanStatus && (
+              <div
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  background: "rgba(255, 255, 255, 0.15)",
+                  fontSize: 13,
+                  color: "#ffffff",
+                  marginBottom: 12,
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                }}
+              >
+                {scanStatus}
+              </div>
+            )}
+
+            {activePlayers.map((pi, bi) => {
+              const p = players[pi];
+              const fouled = boards[bi] ? isFouled(boards[bi]) : false;
+              const royalty =
+                boards[bi] && !fouled ? getTotalRoyalties(boards[bi]) : 0;
+              const fl = boards[bi] && !fouled ? qualifiesFL(boards[bi]) : false;
+              
+              return (
+                <div key={pi} style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 12 }}>
+                  {bi === 0 ? (
+                    <button
+                      onClick={() => setView("home")}
+                      style={{
+                        background: "rgba(255, 255, 255, 0.15)",
+                        border: "1px solid rgba(255, 255, 255, 0.3)",
+                        borderRadius: "50%",
+                        width: 36,
+                        height: 36,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        color: "#ffffff",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                        flexShrink: 0,
+                        marginTop: 6,
+                      }}
+                    >
+                      {/* Robustes Pfeilsymbol, das systemunabhängig immer lädt */}
+                      <span style={{ fontSize: 20, fontWeight: "bold", lineHeight: 1, display: "inline-block", transform: "translateY(-1px)" }}>
+                        ←
+                      </span>
+                    </button>
+                  ) : (
+                    <div style={{ width: 36, flexShrink: 0 }} />
+                  )}
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <BoardEditor
+                      board={boards[bi] || emptyBoard()}
+                      onChange={(nb) =>
+                        setBoards((bs) => bs.map((b, i) => (i === bi ? nb : b)))
+                      }
+                      label={(p && p.name) || "Spieler " + (bi + 1)}
+                      fouled={fouled}
+                      royalty={royalty}
+                      fl={fl}
+                      isForcedFoul={!!forcedFouls[bi]}
+                      playerIndex={bi}
+                      activeCardEdit={activeCardEdit}
+                      onSelectSlot={(rowKey, slotIndex) =>
+                        setActiveCardEdit({ playerIndex: bi, rowKey, slotIndex })
+                      }
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {activeCardEdit && (
+            <CardSelectorModal
+              activeSlot={activeCardEdit}
+              boards={boards}
+              players={players}
+              activePlayers={activePlayers}
+              onSelectCard={handleSelectCard}
+              onClearCard={handleClearCard}
+              onClose={() => setActiveCardEdit(null)}
+            />
+          )}
+
+          <div
+            style={{
+              position: "fixed",
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: "#103f22",
+              borderTop: "1px solid rgba(255, 255, 255, 0.2)",
+              zIndex: 50,
+              boxShadow: "0 -4px 20px rgba(0,0,0,0.3)",
+            }}
+          >
+            <div
+              style={{ maxWidth: 680, margin: "0 auto", padding: "10px 12px" }}
+            >
+              {result ? (
+                <>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      marginBottom: 10,
+                      justifyContent: "center",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {activePlayers.map((pi, i) => {
+                      const p = players[pi];
+                      const d = result.delta[i];
+                      return (
+                        <div
+                          key={pi}
+                          style={{
+                            textAlign: "center",
+                            background: "rgba(255,255,255,0.1)",
+                            borderRadius: 10,
+                            padding: "8px 14px",
+                            minWidth: 80,
+                          }}
+                        >
                           <div
                             style={{
-                              position: "relative",
-                              width: "100%",
-                              maxWidth: 72,
-                              aspectRatio: "1/1",
+                              fontSize: 12,
+                              color: "rgba(255,255,255,0.8)",
+                              marginBottom: 2,
                             }}
                           >
-                            <img
-                              src={img.previewUrl}
-                              alt=""
-                              onClick={() =>
-                                setBlackoutState({
-                                  boardIndex: bi,
-                                  src: img.originalSrc,
-                                  mimeType: img.mimeType,
-                                  initialStrokes: img.strokes || [],
-                                })
-                              }
+                            {p ? p.name : ""}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 22,
+                              fontWeight: 600,
+                              color:
+                                d > 0 ? "#2ecc71" : d < 0 ? "#e74c3c" : "#ffffff",
+                            }}
+                          >
+                            {d > 0 ? "+" : ""}
+                            {d}
+                          </div>
+                          {result.fouled[i] && (
+                            <div
                               style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "contain",
-                                borderRadius: 6,
-                                display: "block",
-                                cursor: "pointer",
-                                border: "1.5px solid rgba(255,255,255,0.3)",
-                                backgroundColor: "#000",
-                              }}
-                            />
-                            <button
-                              onClick={() => removePhoto(bi)}
-                              style={{
-                                position: "absolute",
-                                top: -6,
-                                right: -6,
-                                background: "#e74c3c",
-                                color: "#fff",
-                                border: "none",
-                                borderRadius: "50%",
-                                width: 20,
-                                height: 20,
-                                fontSize: 11,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                cursor: "pointer",
-                                padding: 0,
-                                boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
+                                fontSize: 10,
+                                color: "#e74c3c",
+                                marginTop: 1,
                               }}
                             >
-                              ✕
-                            </button>
-                          </div>
-                        )}
-
-                        {/* Kamera Button: Wird bei Foul unklickbar & ausgegraut */}
-                        <button
-                          onMouseDown={
-                            foul ? null : (e) => handleCameraPress(e, bi)
-                          }
-                          onMouseUp={foul ? null : () => handleCameraRelease()}
-                          onMouseLeave={
-                            foul ? null : () => handleCameraRelease()
-                          }
-                          onTouchStart={
-                            foul ? null : (e) => handleCameraPress(e, bi)
-                          }
-                          onTouchEnd={foul ? null : () => handleCameraRelease()}
-                          onClick={() => {
-                            if (foul) return;
-                            if (!wasLongPress.current) openInAppCamera(bi);
-                            wasLongPress.current = false;
-                          }}
-                          disabled={foul}
-                          style={{
-                            width: "100%",
-                            padding: "8px 0",
-                            borderRadius: 8,
-                            border: foul
-                              ? "1.5px solid rgba(255,255,255,0.1)"
-                              : img
-                              ? "1.5px solid #27ae60"
-                              : "1.5px solid rgba(255,255,255,0.3)",
-                            background: foul
-                              ? "rgba(255,255,255,0.03)"
-                              : img
-                              ? "#27ae60"
-                              : "rgba(255,255,255,0.12)",
-                            color: foul ? "rgba(255,255,255,0.2)" : "#fff",
-                            cursor: foul ? "not-allowed" : "pointer",
-                            fontSize: 20,
-                            lineHeight: 1,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            opacity: foul ? 0.4 : 1,
-                          }}
-                        >
-                          📷
-                        </button>
-
-                        {/* Foul Button: Vollständig rückgängig machbar ohne Foto-Verlust */}
-                        <button
-                          onClick={() => toggleFoul(bi)}
-                          style={{
-                            width: "100%",
-                            padding: "7px 0",
-                            borderRadius: 8,
-                            border: "none",
-                            background: foul
-                              ? "#e74c3c"
-                              : "rgba(255,255,255,0.12)",
-                            color: foul ? "#fff" : "rgba(255,255,255,0.7)",
-                            fontWeight: foul ? 600 : 400,
-                            fontSize: 13,
-                            cursor: "pointer",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: 4,
-                          }}
-                        >
-                          {foul && "✕ "}Foul
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <button
-                  onClick={handleEvaluate}
-                  disabled={!allReady || isScanning}
-                  style={{
-                    width: "100%",
-                    padding: "13px 0",
-                    borderRadius: 10,
-                    border: "none",
-                    fontWeight: 600,
-                    fontSize: 15,
-                    cursor: allReady && !isScanning ? "pointer" : "not-allowed",
-                    background:
-                      allReady && !isScanning
-                        ? "#f39c12"
-                        : "rgba(255,255,255,0.15)",
-                    color:
-                      allReady && !isScanning
-                        ? "#fff"
-                        : "rgba(255,255,255,0.4)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                  }}
-                >
-                  <i className="ti ti-sparkles" style={{ fontSize: 16 }} />
-                  {isScanning ? "Analysiere…" : "Auswertung"}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ── HISTORY ───────────────────────────────────────────────────────────────
-  if (view === "history")
-    return (
-      <div style={{ maxWidth: 680, margin: "0 auto", padding: "1rem 0" }}>
-        <Nav />
-        <h3 style={{ fontWeight: 500, fontSize: 16, marginBottom: 16 }}>
-          Spielverlauf
-        </h3>
-        {sessions.length === 0 && (
-          <div
-            style={{
-              padding: "2rem",
-              textAlign: "center",
-              color: "var(--color-text-secondary)",
-              border: "1.5px dashed var(--color-border-tertiary)",
-              borderRadius: 12,
-            }}
-          >
-            Noch keine Runden gespeichert.
-          </div>
-        )}
-        {sessions.map((s) => (
-          <div
-            key={s.id}
-            style={{
-              border: "0.5px solid var(--color-border-tertiary)",
-              borderRadius: 12,
-              padding: "1rem 1.25rem",
-              marginBottom: 10,
-              background: "var(--color-background-primary)",
-            }}
-          >
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--color-text-secondary)",
-                marginBottom: 8,
-              }}
-            >
-              {new Date(s.date).toLocaleDateString("de-DE", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </div>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              {s.playerNames.map((name, i) => (
-                <div
-                  key={i}
-                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                >
-                  <span style={{ fontSize: 14 }}>{name}</span>
-                  <span
+                              Fouled
+                            </div>
+                          )}
+                          {result.fl && result.fl[i] && (
+                            <div
+                              style={{
+                                fontSize: 10,
+                                color: "#f1c40f",
+                                marginTop: 1,
+                              }}
+                            >
+                              Fantasyland!
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      onClick={discardRound}
+                      style={{
+                        flex: 1,
+                        padding: "12px 0",
+                        borderRadius: 10,
+                        border: "1.5px solid rgba(255,255,255,0.3)",
+                        background: "transparent",
+                        color: "#fff",
+                        fontWeight: 500,
+                        fontSize: 14,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Verwerfen
+                    </button>
+                    <button
+                      onClick={saveRound}
+                      style={{
+                        flex: 2,
+                        padding: "12px 0",
+                        borderRadius: 10,
+                        border: "none",
+                        background: "#2ecc71",
+                        color: "#fff",
+                        fontWeight: 600,
+                        fontSize: 15,
+                        cursor: "pointer",
+                      }}
+                    >
+                      ✓ Speichern
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div
                     style={{
-                      fontWeight: 500,
-                      color:
-                        s.delta[i] > 0
-                          ? "var(--color-text-success)"
-                          : s.delta[i] < 0
-                          ? "var(--color-text-danger)"
-                          : "var(--color-text-secondary)",
+                      display: "flex",
+                      gap: 8,
+                      marginBottom: 10,
+                      justifyContent: "space-around",
                     }}
                   >
-                    {s.delta[i] > 0 ? "+" : ""}
-                    {s.delta[i]}
-                  </span>
-                </div>
-              ))}
+                    {activePlayers.map((pi, bi) => {
+                      const p = players[pi];
+                      const img = capturedImages[bi];
+                      const foul = !!forcedFouls[bi];
+                      return (
+                        <div
+                          key={bi}
+                          style={{
+                            flex: 1,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            gap: 6,
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: "rgba(255,255,255,0.8)",
+                              fontWeight: 500,
+                              textAlign: "center",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              maxWidth: "100%",
+                            }}
+                          >
+                            {(p && p.name) || "P" + (bi + 1)}
+                          </span>
+
+                          {img && !foul && (
+                            <div
+                              style={{
+                                position: "relative",
+                                width: "100%",
+                                maxWidth: 72,
+                                aspectRatio: "1/1",
+                              }}
+                            >
+                              <img
+                                src={img.previewUrl}
+                                alt=""
+                                onClick={() =>
+                                  setBlackoutState({
+                                    boardIndex: bi,
+                                    src: img.originalSrc,
+                                    mimeType: img.mimeType,
+                                    initialStrokes: img.strokes || [],
+                                  })
+                                }
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  objectFit: "contain",
+                                  borderRadius: 6,
+                                  display: "block",
+                                  cursor: "pointer",
+                                  border: "1.5px solid rgba(255,255,255,0.3)",
+                                  backgroundColor: "#000",
+                                }}
+                              />
+                              <button
+                                onClick={() => removePhoto(bi)}
+                                style={{
+                                  position: "absolute",
+                                  top: -6,
+                                  right: -6,
+                                  background: "#e74c3c",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: "50%",
+                                  width: 20,
+                                  height: 20,
+                                  fontSize: 11,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "pointer",
+                                  padding: 0,
+                                  boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
+                                }}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          )}
+
+                          <button
+                            onMouseDown={
+                              foul ? null : (e) => handleCameraPress(e, bi)
+                            }
+                            onMouseUp={foul ? null : () => handleCameraRelease()}
+                            onMouseLeave={
+                              foul ? null : () => handleCameraRelease()
+                            }
+                            onTouchStart={
+                              foul ? null : (e) => handleCameraPress(e, bi)
+                            }
+                            onTouchEnd={foul ? null : () => handleCameraRelease()}
+                            onClick={() => {
+                              if (foul) return;
+                              if (!wasLongPress.current) openInAppCamera(bi);
+                              wasLongPress.current = false;
+                            }}
+                            disabled={foul}
+                            style={{
+                              width: "100%",
+                              padding: "8px 0",
+                              borderRadius: 8,
+                              border: foul
+                                ? "1.5px solid rgba(255,255,255,0.1)"
+                                : img
+                                ? "1.5px solid #27ae60"
+                                : "1.5px solid rgba(255,255,255,0.3)",
+                              background: foul
+                                ? "rgba(255,255,255,0.03)"
+                                : img
+                                ? "#27ae60"
+                                : "rgba(255,255,255,0.12)",
+                              color: foul ? "rgba(255,255,255,0.2)" : "#fff",
+                              cursor: foul ? "not-allowed" : "pointer",
+                              fontSize: 20,
+                              lineHeight: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              opacity: foul ? 0.4 : 1,
+                            }}
+                          >
+                            📷
+                          </button>
+
+                          <button
+                            onClick={() => toggleFoul(bi)}
+                            style={{
+                              width: "100%",
+                              padding: "7px 0",
+                              borderRadius: 8,
+                              border: "none",
+                              background: foul
+                                ? "#e74c3c"
+                                : "rgba(255, 255, 255, 0.12)",
+                              color: foul ? "#fff" : "rgba(255, 255, 255, 0.7)",
+                              fontWeight: foul ? 600 : 400,
+                              fontSize: 13,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 4,
+                            }}
+                          >
+                            {foul && "✕ "}Foul
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={handleEvaluate}
+                    disabled={!allReady || isScanning}
+                    style={{
+                      width: "100%",
+                      padding: "13px 0",
+                      borderRadius: 10,
+                      border: "none",
+                      fontWeight: 600,
+                      fontSize: 15,
+                      cursor: allReady && !isScanning ? "pointer" : "not-allowed",
+                      background:
+                        allReady && !isScanning
+                          ? "#f39c12"
+                          : "rgba(255,255,255,0.15)",
+                      color:
+                        allReady && !isScanning
+                          ? "#fff"
+                          : "rgba(255,255,255,0.4)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <i className="ti ti-sparkles" style={{ fontSize: 16 }} />
+                    {isScanning ? "Analysiere…" : "Auswertung"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
-        ))}
-      </div>
-    );
-
-  // ── PLAYERS ───────────────────────────────────────────────────────────────
-  if (view === "players")
-    return (
-      <div style={{ maxWidth: 680, margin: "0 auto", padding: "1rem 0" }}>
-        <Nav />
-        <h3 style={{ fontWeight: 500, fontSize: 16, marginBottom: 16 }}>
-          Spielerverwaltung
-        </h3>
-        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-          <input
-            value={newPlayerName}
-            onChange={(e) => setNewPlayerName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addPlayer()}
-            placeholder="Neuer Spieler..."
-            style={{
-              flex: 1,
-              padding: "8px 12px",
-              borderRadius: 8,
-              border: "0.5px solid var(--color-border-secondary)",
-            }}
-          />
-          <button
-            onClick={addPlayer}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 8,
-              border: "none",
-              background: "var(--color-background-info)",
-              color: "var(--color-text-info)",
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            <i className="ti ti-plus" /> Hinzufügen
-          </button>
         </div>
-        {players.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              border: "0.5px solid var(--color-border-tertiary)",
-              borderRadius: 10,
-              padding: "12px 16px",
-              marginBottom: 8,
-              background: "var(--color-background-primary)",
-            }}
-          >
+      )}
+
+      {view === "history" && (
+        <div style={{ maxWidth: 680, margin: "0 auto", padding: "1rem 16px" }}>
+          <Nav />
+          <h3 style={{ fontWeight: 500, fontSize: 16, marginBottom: 16, color: "#ffffff" }}>
+            Spielverlauf
+          </h3>
+          {sessions.length === 0 && (
             <div
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: "50%",
-                background: "var(--color-background-secondary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 500,
-                fontSize: 14,
-                marginRight: 12,
+                padding: "2rem",
+                textAlign: "center",
+                color: "rgba(255, 255, 255, 0.7)",
+                border: "1.5px dashed rgba(255, 255, 255, 0.3)",
+                borderRadius: 12,
               }}
             >
-              {p.name.slice(0, 2).toUpperCase()}
+              Noch keine Runden gespeichert.
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 500 }}>{p.name}</div>
+          )}
+          {sessions.map((s) => (
+            <div
+              key={s.id}
+              style={{
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: 12,
+                padding: "1rem 1.25rem",
+                marginBottom: 10,
+                background: "rgba(255, 255, 255, 0.08)",
+              }}
+            >
               <div
-                style={{ fontSize: 12, color: "var(--color-text-secondary)" }}
+                style={{
+                  fontSize: 13,
+                  color: "rgba(255, 255, 255, 0.7)",
+                  marginBottom: 8,
+                }}
               >
-                {p.games || 0} Spiele · Gesamt: {p.score > 0 ? "+" : ""}
-                {p.score || 0}
+                {new Date(s.date).toLocaleDateString("de-DE", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                {s.playerNames.map((name, i) => (
+                  <div
+                    key={i}
+                    style={{ display: "flex", alignItems: "center", gap: 8 }}
+                  >
+                    <span style={{ fontSize: 14, color: "#ffffff" }}>{name}</span>
+                    <span
+                      style={{
+                        fontWeight: 500,
+                        color:
+                          s.delta[i] > 0
+                            ? "#2ecc71"
+                            : s.delta[i] < 0
+                            ? "#e74c3c"
+                            : "#ffffff",
+                      }}
+                    >
+                      {s.delta[i] > 0 ? "+" : ""}
+                      {s.delta[i]}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
-            <button
-              onClick={() => removePlayer(p.id)}
+          ))}
+        </div>
+      )}
+
+      {view === "players" && (
+        <div style={{ maxWidth: 680, margin: "0 auto", padding: "1rem 16px" }}>
+          <Nav />
+          <h3 style={{ fontWeight: 500, fontSize: 16, marginBottom: 16, color: "#ffffff" }}>
+            Spielerverwaltung
+          </h3>
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            <input
+              value={newPlayerName}
+              onChange={(e) => setNewPlayerName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addPlayer()}
+              placeholder="Neuer Spieler..."
               style={{
-                background: "transparent",
+                flex: 1,
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #cbd5e1",
+                background: "#ffffff",
+                color: "#1e293b",
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={addPlayer}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 8,
                 border: "none",
+                background: "#ffffff",
+                color: BACKGROUND_COLOR,
+                fontWeight: 600,
                 cursor: "pointer",
-                color: "var(--color-text-tertiary)",
-                fontSize: 18,
               }}
             >
-              <i className="ti ti-trash" />
+              <i className="ti ti-plus" /> Hinzufügen
             </button>
           </div>
-        ))}
-      </div>
-    );
+          {players.map((p) => (
+            <div
+              key={p.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: 10,
+                padding: "12px 16px",
+                marginBottom: 8,
+                background: "rgba(255, 255, 255, 0.08)",
+              }}
+            >
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: "50%",
+                  background: "rgba(255, 255, 255, 0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 500,
+                  fontSize: 14,
+                  marginRight: 12,
+                  color: "#ffffff",
+                }}
+              >
+                {p.name.slice(0, 2).toUpperCase()}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500, color: "#ffffff" }}>{p.name}</div>
+                <div
+                  style={{ fontSize: 12, color: "rgba(255, 255, 255, 0.7)" }}
+                >
+                  {p.games || 0} Spiele · Gesamt: {p.score > 0 ? "+" : ""}
+                  {p.score || 0}
+                </div>
+              </div>
+              <button
+                onClick={() => removePlayer(p.id)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "rgba(255, 255, 255, 0.6)",
+                  fontSize: 18,
+                }}
+              >
+                <i className="ti ti-trash" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
