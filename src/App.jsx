@@ -131,21 +131,14 @@ export default function App() {
       pressTimer.current = null;
     }
   };
-  const handleCameraRelease=()=>{if(pressTimer.current){clearTimeout(pressTimer.current);pressTimer.current=null;}};
-  const openInAppCamera=bi=>setCameraState({boardIndex:bi});
-  const openGallery=bi=>{if(galleryRefs.current[bi])galleryRefs.current[bi].click();};
+  
 
   const openInAppCamera = (bi) => setCameraState({ boardIndex: bi });
 
   const openGallery = (bi) => {
     if (galleryRefs.current[bi]) galleryRefs.current[bi].click();
   };
-  const handleFileSelected=async(e,bi)=>{
-    const file=e.target.files&&e.target.files[0];if(!file)return;
-    e.target.value=null;
-    const dataUrl=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
-    setBlackoutState({boardIndex:bi,src:dataUrl,initialStrokes:[],mimeType:file.type||"image/jpeg"});
-  };
+
 
   const handleFileSelected = async (e, bi) => {
     const file = e.target.files && e.target.files[0];
@@ -382,7 +375,6 @@ export default function App() {
   const discardRound = () => {
     setResult(null);
   };
-  const discardRound=()=>setResult(null);
 
   if (loading) {
     return (
