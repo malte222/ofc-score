@@ -263,18 +263,28 @@ export default function App() {
     }
   };
 
-  // Ready check
+  // Ready check (robuste Version)
   const allReady =
-    activePlayers.length > 0 &&
-    activePlayers.every(
-      (_, bi) =>
-        capturedImages[bi] || forcedFouls[bi] || isBoardFilled(boards[bi])
-    );
+  activePlayers.length > 0 &&
+  activePlayers.every((_, bi) => {
+    const hasImage = !!capturedImages[bi];
+    const isFoul = !!forcedFouls[bi];
+    const board = boards[bi] || emptyBoard();
 
-  // Main evaluation (with optional AI card recognition)
+    // Prüfe, ob alle Karten manuell ausgefüllt sind
+    const topFilled = board.top.every((card) => card !== "");
+    const middleFilled = board.middle.every((card) => card !== "");
+    const bottomFilled = board.bottom.every((card) => card !== "");
+
+    return hasImage || isFoul || (topFilled && middleFilled && bottomFilled);
+  });
+
+  // Main evaluation
   const handleEvaluate = async () => {
     if (!allReady) return;
+
     setIsScanning(true);
+    setScanStatus("Auswertung läuft…");
 
     const imageSlots = activePlayers.map((_, bi) =>
       forcedFouls[bi] ? null : capturedImages[bi]
@@ -282,23 +292,23 @@ export default function App() {
     const nonFouledImages = imageSlots.filter(Boolean);
     const hasImages = nonFouledImages.length > 0;
 
-    if (hasImages) {
-      setScanStatus("KI analysiert Boards…");
-    }
-
     try {
       let recognized = [];
+
       if (hasImages) {
+        setScanStatus("KI analysiert Boards…");
         recognized = (await recognizeAllBoards(nonFouledImages)) || [];
       }
 
       let riIdx = 0;
+
       const newBoards = boards.map((b, bi) => {
         if (forcedFouls[bi]) return b;
 
         if (capturedImages[bi]) {
           const r = recognized[riIdx++];
           if (!r) return b;
+
           return {
             top: (Array.isArray(r.top) ? r.top : [])
               .slice(0, 3)
@@ -317,21 +327,31 @@ export default function App() {
               .slice(0, 5),
           };
         }
+
         return b;
       });
 
       setBoards(newBoards);
 
       const foulsArr = activePlayers.map((_, bi) => !!forcedFouls[bi]);
+
+      // Wichtiger: Wir rufen calcPoints jetzt immer auf
       const res = calcPoints(newBoards, foulsArr);
+
+      console.log("calcPoints Ergebnis:", res); // ← Zum Debuggen
+
       setResult({
         ...res,
         fl: newBoards.map((b, i) => (foulsArr[i] ? false : qualifiesFL(b))),
       });
+      console.log(">>> setResult wurde aufgerufen. result ist jetzt:", result);
+
       setScanStatus("");
     } catch (err) {
-      setScanStatus("Fehler: " + err.message);
+      console.error("Fehler in handleEvaluate:", err); // ← Wichtige Zeile!
+      setScanStatus("Fehler: " + (err.message || err));
     }
+
     setIsScanning(false);
   };
 
@@ -624,433 +644,255 @@ export default function App() {
       )}
 
       {/* ROUND VIEW */}
-      {view === "round" && (
+{view === "round" && (
+  <div
+    style={{
+      maxWidth: 680,
+      margin: "0 auto",
+      padding: "1rem 16px",
+      paddingBottom: BOTTOM_H + 8,
+      minHeight: "100vh",
+    }}
+  >
+    <div style={{ padding: "2px 0" }}>
+      {scanStatus && (
         <div
           style={{
-            maxWidth: 680,
-            margin: "0 auto",
-            padding: "1rem 16px",
-            paddingBottom: BOTTOM_H + 16,
-            minHeight: "100vh",
+            padding: "8px 14px",
+            borderRadius: 8,
+            background: "rgba(255, 255, 255, 0.15)",
+            fontSize: 13,
+            color: "#ffffff",
+            marginBottom: 12,
+            border: "1px solid rgba(255, 255, 255, 0.2)",
           }}
         >
-          <div style={{ padding: "0.5rem 0" }}>
-            {scanStatus && (
-              <div
+          {scanStatus}
+        </div>
+      )}
+
+      {activePlayers.map((pi, bi) => {
+        const p = players[pi];
+        const fouled = boards[bi] ? isFouled(boards[bi]) : false;
+        const royalty =
+          boards[bi] && !fouled ? getTotalRoyalties(boards[bi]) : 0;
+        const fl =
+          boards[bi] && !fouled ? qualifiesFL(boards[bi]) : false;
+
+        return (
+          <div
+            key={pi}
+            style={{
+              display: "flex",
+              gap: 5,
+              alignItems: "flex-start",
+              marginBottom: 4,
+            }}
+          >
+            {bi === 0 ? (
+              <button
+                onClick={() => setView("home")}
                 style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
                   background: "rgba(255, 255, 255, 0.15)",
-                  fontSize: 13,
+                  border: "1px solid rgba(255, 255, 255, 0.3)",
+                  borderRadius: "50%",
+                  width: 36,
+                  height: 36,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
                   color: "#ffffff",
-                  marginBottom: 12,
-                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  flexShrink: 0,
+                  marginTop: 6,
                 }}
               >
-                {scanStatus}
-              </div>
+                <span
+                  style={{
+                    fontSize: 20,
+                    fontWeight: "bold",
+                    lineHeight: 1,
+                    display: "inline-block",
+                    transform: "translateY(-1px)",
+                  }}
+                >
+                  ←
+                </span>
+              </button>
+            ) : (
+              <div style={{ width: 36, flexShrink: 0 }} />
             )}
 
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <BoardEditor
+                board={boards[bi] || emptyBoard()}
+                label={(p && p.name) || "Spieler " + (bi + 1)}
+                fouled={fouled}
+                royalty={royalty}
+                fl={fl}
+                isForcedFoul={!!forcedFouls[bi]}
+                playerIndex={bi}
+                activeCardEdit={activeCardEdit}
+                onSelectSlot={(rowKey, slotIndex) =>
+                  setActiveCardEdit({ playerIndex: bi, rowKey, slotIndex })
+                }
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    {/* Card Selector Modal */}
+    {activeCardEdit && (
+      <CardSelectorModal
+        activeSlot={activeCardEdit}
+        boards={boards}
+        players={players}
+        activePlayers={activePlayers}
+        onSelectCard={handleSelectCard}
+        onClearCard={handleClearCard}
+        onClose={() => setActiveCardEdit(null)}
+      />
+    )}
+
+    {/* ==================== BOTTOM ACTION BAR ==================== */}
+    <div
+      style={{
+        position: "fixed",
+        bottom: 0,
+        left: 0,
+        right: 0,
+        background: "#103f22",
+        borderTop: "1px solid rgba(255, 255, 255, 0.2)",
+        zIndex: 50,
+        boxShadow: "0 -4px 20px rgba(0,0,0,0.3)",
+      }}
+    >
+      <div style={{ maxWidth: 680, margin: "0 auto", padding: "8px 12px" }}>
+        {/* Spieler-Controls nur anzeigen, wenn noch KEIN Ergebnis vorliegt */}
+        {!result && (
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 8,
+              justifyContent: "space-around",
+            }}
+          >
             {activePlayers.map((pi, bi) => {
               const p = players[pi];
-              const fouled = boards[bi] ? isFouled(boards[bi]) : false;
-              const royalty =
-                boards[bi] && !fouled ? getTotalRoyalties(boards[bi]) : 0;
-              const fl =
-                boards[bi] && !fouled ? qualifiesFL(boards[bi]) : false;
+              const img = capturedImages[bi];
+              const foul = !!forcedFouls[bi];
 
               return (
                 <div
-                  key={pi}
+                  key={bi}
                   style={{
+                    flex: 1,
                     display: "flex",
-                    gap: 10,
-                    alignItems: "flex-start",
-                    marginBottom: 12,
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 0,
+                    minWidth: 0,
                   }}
                 >
-                  {bi === 0 ? (
-                    <button
-                      onClick={() => setView("home")}
-                      style={{
-                        background: "rgba(255, 255, 255, 0.15)",
-                        border: "1px solid rgba(255, 255, 255, 0.3)",
-                        borderRadius: "50%",
-                        width: 36,
-                        height: 36,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        color: "#ffffff",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
-                        flexShrink: 0,
-                        marginTop: 6,
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: 20,
-                          fontWeight: "bold",
-                          lineHeight: 1,
-                          display: "inline-block",
-                          transform: "translateY(-1px)",
-                        }}
-                      >
-                        ←
-                      </span>
-                    </button>
-                  ) : (
-                    <div style={{ width: 36, flexShrink: 0 }} />
-                  )}
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.8)", fontWeight: 500 }}>
+                    {(p && p.name) || "P" + (bi + 1)}
+                  </span>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <BoardEditor
-                      board={boards[bi] || emptyBoard()}
-                      label={(p && p.name) || "Spieler " + (bi + 1)}
-                      fouled={fouled}
-                      royalty={royalty}
-                      fl={fl}
-                      isForcedFoul={!!forcedFouls[bi]}
-                      playerIndex={bi}
-                      activeCardEdit={activeCardEdit}
-                      onSelectSlot={(rowKey, slotIndex) =>
-                        setActiveCardEdit({ playerIndex: bi, rowKey, slotIndex })
-                      }
-                    />
+                  <div style={{ width: "100%", height: 82, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", gap: 6 }}>
+                    {img ? (
+                      <div style={{ position: "relative", width: "100%", maxWidth: 72, height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        <img
+                          src={img.previewUrl}
+                          onClick={() => setBlackoutState({ boardIndex: bi, src: img.originalSrc, mimeType: img.mimeType, initialStrokes: img.strokes || [] })}
+                          style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain", borderRadius: 6, border: "1.5px solid rgba(255,255,255,0.3)", backgroundColor: "#000", cursor: "pointer" }}
+                        />
+                        <button
+                          onClick={() => removePhoto(bi)}
+                          style={{ position: "absolute", top: -6, right: -6, background: "#e74c3c", color: "#fff", border: "none", borderRadius: "50%", width: 20, height: 20, fontSize: 11 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button onClick={() => openInAppCamera(bi)} style={{ width: "100%", padding: "8px 0", borderRadius: 8, border: "1.5px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.12)", color: "#fff", fontSize: 20 }}>
+                          📷
+                        </button>
+                        <button onClick={() => toggleFoul(bi)} style={{ width: "100%", padding: "7px 0", borderRadius: 8, border: "none", background: foul ? "#e74c3c" : "rgba(255,255,255,0.12)", color: foul ? "#fff" : "rgba(255,255,255,0.7)", fontSize: 13 }}>
+                          {foul && "✕ "}Foul
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
+        )}
 
-          {/* Card Selector Modal */}
-          {activeCardEdit && (
-            <CardSelectorModal
-              activeSlot={activeCardEdit}
-              boards={boards}
-              players={players}
-              activePlayers={activePlayers}
-              onSelectCard={handleSelectCard}
-              onClearCard={handleClearCard}
-              onClose={() => setActiveCardEdit(null)}
-            />
-          )}
-
-          {/* Bottom action bar */}
-          <div
-            style={{
-              position: "fixed",
-              bottom: 0,
-              left: 0,
-              right: 0,
-              background: "#103f22",
-              borderTop: "1px solid rgba(255, 255, 255, 0.2)",
-              zIndex: 50,
-              boxShadow: "0 -4px 20px rgba(0,0,0,0.3)",
-            }}
-          >
-            <div
-              style={{ maxWidth: 680, margin: "0 auto", padding: "10px 12px" }}
-            >
-              {result ? (
-                <>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      marginBottom: 10,
-                      justifyContent: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    {activePlayers.map((pi, i) => {
-                      const p = players[pi];
-                      const d = result.delta[i];
-                      return (
-                        <div
-                          key={pi}
-                          style={{
-                            textAlign: "center",
-                            background: "rgba(255,255,255,0.1)",
-                            borderRadius: 10,
-                            padding: "8px 14px",
-                            minWidth: 80,
-                          }}
-                        >
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: "rgba(255,255,255,0.8)",
-                              marginBottom: 2,
-                            }}
-                          >
-                            {p ? p.name : ""}
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 22,
-                              fontWeight: 600,
-                              color:
-                                d > 0 ? "#2ecc71" : d < 0 ? "#e74c3c" : "#ffffff",
-                            }}
-                          >
-                            {d > 0 ? "+" : ""}
-                            {d}
-                          </div>
-                          {result.fouled[i] && (
-                            <div style={{ fontSize: 10, color: "#e74c3c", marginTop: 1 }}>
-                              Fouled
-                            </div>
-                          )}
-                          {result.fl && result.fl[i] && (
-                            <div style={{ fontSize: 10, color: "#f1c40f", marginTop: 1 }}>
-                              Fantasyland!
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+        {/* ==================== ERGEBNIS oder AUSWERTUNG BUTTON ==================== */}
+        {result ? (
+          <>
+            {/* Ergebnis-Anzeige */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              {activePlayers.map((pi, i) => {
+                const p = players[pi];
+                const d = result.delta[i];
+                return (
+                  <div key={pi} style={{ textAlign: "center", background: "rgba(255,255,255,0.1)", borderRadius: 10, padding: "8px 14px", minWidth: 80 }}>
+                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.8)" }}>{p ? p.name : ""}</div>
+                    <div style={{ fontSize: 22, fontWeight: 600, color: d > 0 ? "#2ecc71" : d < 0 ? "#e74c3c" : "#ffffff" }}>
+                      {d > 0 ? "+" : ""}{d}
+                    </div>
+                    {result.fouled?.[i] && <div style={{ fontSize: 10, color: "#e74c3c" }}>Fouled</div>}
+                    {result.fl?.[i] && <div style={{ fontSize: 10, color: "#f1c40f" }}>Fantasyland!</div>}
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      onClick={discardRound}
-                      style={{
-                        flex: 1,
-                        padding: "12px 0",
-                        borderRadius: 10,
-                        border: "1.5px solid rgba(255,255,255,0.3)",
-                        background: "transparent",
-                        color: "#fff",
-                        fontWeight: 500,
-                        fontSize: 14,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Verwerfen
-                    </button>
-                    <button
-                      onClick={saveRound}
-                      style={{
-                        flex: 2,
-                        padding: "12px 0",
-                        borderRadius: 10,
-                        border: "none",
-                        background: "#2ecc71",
-                        color: "#fff",
-                        fontWeight: 600,
-                        fontSize: 15,
-                        cursor: "pointer",
-                      }}
-                    >
-                      ✓ Speichern
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      marginBottom: 10,
-                      justifyContent: "space-around",
-                    }}
-                  >
-                    {activePlayers.map((pi, bi) => {
-                      const p = players[pi];
-                      const img = capturedImages[bi];
-                      const foul = !!forcedFouls[bi];
-                      return (
-                        <div
-                          key={bi}
-                          style={{
-                            flex: 1,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: 6,
-                            minWidth: 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color: "rgba(255,255,255,0.8)",
-                              fontWeight: 500,
-                              textAlign: "center",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              maxWidth: "100%",
-                            }}
-                          >
-                            {(p && p.name) || "P" + (bi + 1)}
-                          </span>
-
-                          {img && !foul && (
-                            <div
-                              style={{
-                                position: "relative",
-                                width: "100%",
-                                maxWidth: 72,
-                                aspectRatio: "1/1",
-                              }}
-                            >
-                              <img
-                                src={img.previewUrl}
-                                alt=""
-                                onClick={() =>
-                                  setBlackoutState({
-                                    boardIndex: bi,
-                                    src: img.originalSrc,
-                                    mimeType: img.mimeType,
-                                    initialStrokes: img.strokes || [],
-                                  })
-                                }
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "contain",
-                                  borderRadius: 6,
-                                  display: "block",
-                                  cursor: "pointer",
-                                  border: "1.5px solid rgba(255,255,255,0.3)",
-                                  backgroundColor: "#000",
-                                }}
-                              />
-                              <button
-                                onClick={() => removePhoto(bi)}
-                                style={{
-                                  position: "absolute",
-                                  top: -6,
-                                  right: -6,
-                                  background: "#e74c3c",
-                                  color: "#fff",
-                                  border: "none",
-                                  borderRadius: "50%",
-                                  width: 20,
-                                  height: 20,
-                                  fontSize: 11,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  cursor: "pointer",
-                                  padding: 0,
-                                  boxShadow: "0 1px 4px rgba(0,0,0,0.4)",
-                                }}
-                              >
-                                ✕
-                              </button>
-                            </div>
-                          )}
-
-                          <button
-                            onMouseDown={
-                              foul ? null : (e) => handleCameraPress(e, bi)
-                            }
-                            onMouseUp={foul ? null : () => handleCameraRelease()}
-                            onMouseLeave={
-                              foul ? null : () => handleCameraRelease()
-                            }
-                            onTouchStart={
-                              foul ? null : (e) => handleCameraPress(e, bi)
-                            }
-                            onTouchEnd={foul ? null : () => handleCameraRelease()}
-                            onClick={() => {
-                              if (foul) return;
-                              if (!wasLongPress.current) openInAppCamera(bi);
-                              wasLongPress.current = false;
-                            }}
-                            disabled={foul}
-                            style={{
-                              width: "100%",
-                              padding: "8px 0",
-                              borderRadius: 8,
-                              border: foul
-                                ? "1.5px solid rgba(255,255,255,0.1)"
-                                : img
-                                ? "1.5px solid #27ae60"
-                                : "1.5px solid rgba(255,255,255,0.3)",
-                              background: foul
-                                ? "rgba(255,255,255,0.03)"
-                                : img
-                                ? "#27ae60"
-                                : "rgba(255,255,255,0.12)",
-                              color: foul ? "rgba(255,255,255,0.2)" : "#fff",
-                              cursor: foul ? "not-allowed" : "pointer",
-                              fontSize: 20,
-                              lineHeight: 1,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              opacity: foul ? 0.4 : 1,
-                            }}
-                          >
-                            📷
-                          </button>
-
-                          <button
-                            onClick={() => toggleFoul(bi)}
-                            style={{
-                              width: "100%",
-                              padding: "7px 0",
-                              borderRadius: 8,
-                              border: "none",
-                              background: foul
-                                ? "#e74c3c"
-                                : "rgba(255, 255, 255, 0.12)",
-                              color: foul ? "#fff" : "rgba(255, 255, 255, 0.7)",
-                              fontWeight: foul ? 600 : 400,
-                              fontSize: 13,
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              gap: 4,
-                            }}
-                          >
-                            {foul && "✕ "}Foul
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <button
-                    onClick={handleEvaluate}
-                    disabled={!allReady || isScanning}
-                    style={{
-                      width: "100%",
-                      padding: "13px 0",
-                      borderRadius: 10,
-                      border: "none",
-                      fontWeight: 600,
-                      fontSize: 15,
-                      cursor: allReady && !isScanning ? "pointer" : "not-allowed",
-                      background:
-                        allReady && !isScanning
-                          ? "#f39c12"
-                          : "rgba(255,255,255,0.15)",
-                      color:
-                        allReady && !isScanning
-                          ? "#fff"
-                          : "rgba(255,255,255,0.4)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <i className="ti ti-sparkles" style={{ fontSize: 16 }} />
-                    {isScanning ? "Analysiere…" : "Auswertung"}
-                  </button>
-                </>
-              )}
+                );
+              })}
             </div>
-          </div>
-        </div>
-      )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={discardRound} style={{ flex: 1, padding: "12px 0", borderRadius: 10, border: "1.5px solid rgba(255,255,255,0.3)", background: "transparent", color: "#fff" }}>
+                Verwerfen
+              </button>
+              <button onClick={saveRound} style={{ flex: 2, padding: "12px 0", borderRadius: 10, border: "none", background: "#2ecc71", color: "#fff", fontWeight: 600 }}>
+                ✓ Speichern
+              </button>
+            </div>
+          </>
+        ) : (
+          /* Normaler Auswertung-Button */
+          allReady && !isScanning && (
+            <button
+              onClick={handleEvaluate}
+              style={{
+                width: "100%",
+                padding: "11px 0",
+                borderRadius: 10,
+                border: "none",
+                fontWeight: 600,
+                fontSize: 15,
+                background: "#f39c12",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              <i className="ti ti-sparkles" style={{ fontSize: 16 }} />
+              Auswertung
+            </button>
+          )
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
       {/* HISTORY VIEW */}
       {view === "history" && (
@@ -1225,7 +1067,6 @@ export default function App() {
           onCapture={handleCameraCapture}
           onCancel={() => setCameraState(null)}
           onSelectFile={() => {
-            // Trigger hidden file input if needed
             const input = document.createElement("input");
             input.type = "file";
             input.accept = "image/*";
