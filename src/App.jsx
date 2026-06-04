@@ -132,7 +132,17 @@ export default function App() {
     }
   };
   
-
+  const handleCameraCapture = (dataUrl) => {
+    const bi = cameraState.boardIndex;
+    setCameraState(null);
+    setBlackoutState({
+      boardIndex: bi,
+      src: dataUrl,
+      initialStrokes: [],
+      mimeType: "image/jpeg",
+    });
+  };
+  
   const openInAppCamera = (bi) => setCameraState({ boardIndex: bi });
 
   const openGallery = (bi) => {
